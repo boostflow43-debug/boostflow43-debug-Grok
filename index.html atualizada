@@ -1,0 +1,2434 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boostflow — Sales OS</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<div id="billing-block-overlay" class="fixed inset-0 z-[9999] hidden bg-black/90 backdrop-blur-sm flex items-center justify-center p-5">
+  <div class="w-full max-w-md rounded-3xl border border-orange-500/30 bg-bf-card p-7 shadow-2xl text-center">
+    <div class="mx-auto mb-5 w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-400 text-2xl"><i class="fas fa-lock"></i></div>
+    <div class="text-xs uppercase tracking-[.2em] text-orange-400 font-semibold mb-2">Acesso bloqueado</div>
+    <h2 id="billing-block-title" class="text-2xl font-bold mb-3">Sua assinatura está atrasada</h2>
+    <p id="billing-block-text" class="text-sm text-bf-secondary leading-6 mb-6">Regularize o pagamento para voltar a utilizar o Boostflow CRM.</p>
+    <div class="grid gap-3">
+      <button id="billing-block-pay" onclick="regularizarAssinatura()" class="w-full rounded-xl bg-orange-500 hover:bg-orange-400 text-black font-bold py-3 transition">Regularizar assinatura</button>
+      <button onclick="sair()" class="w-full rounded-xl border border-bf-border py-3 font-semibold text-bf-secondary hover:text-white transition">Sair</button>
+    </div>
+    <div id="billing-block-status" class="text-[11px] text-bf-tertiary mt-4"></div>
+  </div>
+</div>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        bf: {
+          orange: '#F97316',
+          'orange-dim': '#EA580C',
+          'orange-glow': 'rgba(249,115,22,0.15)',
+          bg: '#0A0A0B',
+          surface: '#111113',
+          card: '#161618',
+          elevated: '#1C1C1F',
+          border: '#27272A',
+          muted: '#3F3F46',
+          text: '#FAFAFA',
+          secondary: '#A1A1AA',
+          tertiary: '#71717A',
+        }
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+      boxShadow: {
+        'glow': '0 0 40px rgba(249,115,22,0.12)',
+        'card': '0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)',
+        'elevated': '0 8px 30px rgba(0,0,0,0.45)',
+      }
+    }
+  }
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bf-orange: #F97316;
+    --bf-bg: #0A0A0B;
+    --bf-surface: #111113;
+    --bf-card: #161618;
+    --bf-border: #27272A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bf-bg);
+    color: #FAFAFA;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #3F3F46; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #52525B; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 260px;
+    background: var(--bf-surface);
+    border-right: 1px solid var(--bf-border);
+    transition: width .25s ease, transform .25s ease;
+  }
+  .sidebar.collapsed { width: 72px; }
+  .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .nav-section-title,
+  .sidebar.collapsed .brand-text,
+  .sidebar.collapsed .user-info { display: none; }
+  .sidebar.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; margin: 2px 10px;
+    border-radius: 10px; color: #A1A1AA;
+    font-size: 14px; font-weight: 500;
+    transition: all .15s ease; cursor: pointer;
+    border: none; background: transparent; width: calc(100% - 20px); text-align: left;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.04); color: #FAFAFA; }
+  .nav-item.active {
+    background: rgba(249,115,22,0.12);
+    color: #F97316;
+  }
+  .nav-item .badge {
+    margin-left: auto; min-width: 20px; height: 20px;
+    padding: 0 6px; border-radius: 999px;
+    background: #F97316; color: #0A0A0B;
+    font-size: 11px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .nav-section-title {
+    font-size: 11px; font-weight: 600; color: #52525B;
+    text-transform: uppercase; letter-spacing: .06em;
+    padding: 16px 24px 6px;
+  }
+
+  /* Cards */
+  .bf-card {
+    background: var(--bf-card);
+    border: 1px solid var(--bf-border);
+    border-radius: 14px;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .bf-card:hover { border-color: #3F3F46; }
+  .bf-card-elevated {
+    background: linear-gradient(180deg, #1C1C1F 0%, #161618 100%);
+    border: 1px solid var(--bf-border);
+    border-radius: 16px;
+  }
+
+  /* Status pills */
+  .status-Novo { background: rgba(59,130,246,0.15); color: #60A5FA; }
+  .status-Em_conversa { background: rgba(234,179,8,0.15); color: #FACC15; }
+  .status-Proposta { background: rgba(249,115,22,0.15); color: #FB923C; }
+  .status-Fechado { background: rgba(34,197,94,0.15); color: #4ADE80; }
+  .status-Perdido { background: rgba(239,68,68,0.15); color: #F87171; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+    color: #fff; font-weight: 600; border: none;
+    border-radius: 10px; padding: 10px 18px;
+    transition: transform .15s, box-shadow .15s, opacity .15s;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(249,115,22,0.35); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-ghost {
+    background: transparent; color: #A1A1AA; border: 1px solid var(--bf-border);
+    border-radius: 10px; padding: 10px 18px; font-weight: 500;
+    transition: all .15s; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.04); color: #FAFAFA; border-color: #3F3F46; }
+  .btn-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: none; color: #A1A1AA;
+    transition: all .15s; cursor: pointer;
+  }
+  .btn-icon:hover { background: rgba(255,255,255,0.06); color: #FAFAFA; }
+
+  /* Inputs */
+  .bf-input {
+    width: 100%; background: #0A0A0B; border: 1px solid var(--bf-border);
+    border-radius: 10px; padding: 10px 14px; color: #FAFAFA;
+    font-size: 14px; outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .bf-input:focus { border-color: #F97316; box-shadow: 0 0 0 3px rgba(249,115,22,0.12); }
+  .bf-input::placeholder { color: #52525B; }
+  select.bf-input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2371717A' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+  textarea.bf-input { resize: vertical; min-height: 80px; }
+
+  /* Dialogs */
+  dialog {
+    border: 1px solid var(--bf-border); border-radius: 16px;
+    background: var(--bf-card); color: #FAFAFA; padding: 0;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.6);
+    max-height: 90vh; overflow-y: auto;
+  }
+  dialog::backdrop { background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
+
+  /* Kanban */
+  .kanban-col {
+    min-width: 260px; max-width: 280px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 12px; border: 1px solid var(--bf-border);
+  }
+  .kanban-card {
+    background: var(--bf-card); border: 1px solid var(--bf-border);
+    border-radius: 10px; padding: 12px; cursor: pointer;
+    transition: border-color .15s, transform .15s;
+  }
+  .kanban-card:hover { border-color: #F97316; transform: translateY(-1px); }
+
+  /* WhatsApp chat */
+  .wa-bubble-in {
+    background: #1C1C1F; border-radius: 12px 12px 12px 4px;
+    padding: 8px 12px; max-width: 75%; font-size: 14px; line-height: 1.45;
+  }
+  .wa-bubble-out {
+    background: linear-gradient(135deg, #EA580C 0%, #C2410C 100%);
+    border-radius: 12px 12px 4px 12px;
+    padding: 8px 12px; max-width: 75%; font-size: 14px; line-height: 1.45;
+    margin-left: auto;
+  }
+
+  /* Mobile sidebar overlay */
+  .sidebar-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); z-index: 40;
+  }
+  @media (max-width: 1023px) {
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0; z-index: 50;
+      transform: translateX(-100%);
+    }
+    .sidebar.mobile-open { transform: translateX(0); }
+    .sidebar-overlay.show { display: block; }
+  }
+
+  /* Landing */
+  .gradient-hero {
+    background: radial-gradient(ellipse 80% 60% at 50% -20%, rgba(249,115,22,0.18), transparent),
+                radial-gradient(ellipse 50% 40% at 80% 50%, rgba(249,115,22,0.06), transparent),
+                #0A0A0B;
+  }
+  .feature-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: rgba(249,115,22,0.12); color: #F97316;
+    display: flex; align-items: center; justify-content: center; font-size: 20px;
+  }
+
+  /* Skeleton */
+  .skeleton {
+    background: linear-gradient(90deg, #1C1C1F 25%, #27272A 50%, #1C1C1F 75%);
+    background-size: 200% 100%; animation: shimmer 1.5s infinite;
+    border-radius: 8px;
+  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .fade-in { animation: fadeIn .3s ease; }
+
+  /* Toast */
+  #toast-container {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .toast {
+    background: #1C1C1F; border: 1px solid var(--bf-border);
+    border-radius: 12px; padding: 12px 16px; font-size: 14px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    animation: fadeIn .25s ease; display: flex; align-items: center; gap: 10px;
+    min-width: 280px; max-width: 400px;
+  }
+  .toast.success { border-color: rgba(34,197,94,0.3); }
+  .toast.error { border-color: rgba(239,68,68,0.3); }
+  /* Chart bars */
+  .chart-bar {
+    background: linear-gradient(180deg, #F97316 0%, #C2410C 100%);
+    border-radius: 4px 4px 0 0; transition: height .4s ease;
+    min-width: 12px;
+  }
+
+  /* Funnel step */
+  .funnel-step {
+    flex: 1; text-align: center; position: relative; padding: 16px 8px;
+  }
+  .funnel-step::after {
+    content: ''; position: absolute; right: -8px; top: 50%;
+    width: 16px; height: 2px; background: var(--bf-border);
+  }
+  .funnel-step:last-child::after { display: none; }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center; padding: 48px 24px; color: #71717A;
+  }
+  .empty-state i { font-size: 40px; margin-bottom: 12px; opacity: .4; display: block; }
+
+  /* AI cards */
+  .ai-action-card {
+    background: var(--bf-card); border: 1px solid var(--bf-border);
+    border-radius: 14px; padding: 20px; cursor: pointer;
+    transition: all .2s; text-align: left;
+  }
+  .ai-action-card:hover {
+    border-color: rgba(249,115,22,0.4);
+    background: rgba(249,115,22,0.04);
+    transform: translateY(-2px);
+  }
+</style>
+</head>
+<body class="bg-bf-bg text-bf-text">
+
+<!-- ==================== TOAST ==================== -->
+<div id="toast-container"></div>
+
+<!-- ==================== LANDING PAGE ==================== -->
+<div id="landing">
+  <nav class="sticky top-0 z-50 border-b border-bf-border/60 bg-bf-bg/80 backdrop-blur-xl">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white font-bold text-sm shadow-glow">B</div>
+        <span class="font-bold text-lg tracking-tight">Boostflow</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="irParaAdmin()" class="btn-ghost text-sm hidden sm:inline-flex">Entrar</button>
+        <button onclick="irParaAdmin()" class="btn-primary text-sm">Começar agora</button>
+      </div>
+    </div>
+  </nav>
+
+  <section class="gradient-hero pt-20 pb-24 px-4 text-center">
+    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-bf-border bg-bf-card text-xs text-bf-secondary mb-6">
+      <span class="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+      Sales OS · CRM · WhatsApp · IA
+    </div>
+    <h1 class="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.1] mb-6 max-w-3xl mx-auto">
+      Transforme leads<br>em <span class="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-600">vendas</span>
+    </h1>
+    <p class="text-lg text-bf-secondary max-w-xl mx-auto mb-10 leading-relaxed">
+      O Boostflow reúne CRM, WhatsApp, follow-up, automações e inteligência artificial em uma única plataforma comercial.
+    </p>
+    <div class="flex flex-col sm:flex-row gap-3 justify-center">
+      <button onclick="irParaAdmin()" class="btn-primary text-base px-8 py-3.5">
+        Começar agora <i class="fas fa-arrow-right text-sm"></i>
+      </button>
+      <a href="#features" class="btn-ghost text-base px-8 py-3.5 justify-center">Conhecer o Boostflow</a>
+    </div>
+  </section>
+
+  <section id="features" class="py-20 px-4 border-t border-bf-border">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-2xl sm:text-3xl font-bold text-center mb-3">Tudo que sua operação precisa</h2>
+      <p class="text-bf-secondary text-center mb-14 max-w-lg mx-auto">Um sistema operacional de vendas completo — do primeiro contato ao fechamento.</p>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div class="bf-card p-6">
+          <div class="feature-icon mb-4"><i class="fas fa-users"></i></div>
+          <h3 class="font-semibold text-lg mb-2">CRM Completo</h3>
+          <p class="text-sm text-bf-secondary leading-relaxed">Cadastre leads, organize por status, kanban visual e acompanhe o histórico completo de cada oportunidade.</p>
+        </div>
+        <div class="bf-card p-6">
+          <div class="feature-icon mb-4"><i class="fab fa-whatsapp"></i></div>
+          <h3 class="font-semibold text-lg mb-2">WhatsApp Central</h3>
+          <p class="text-sm text-bf-secondary leading-relaxed">Inbox profissional com conversas, envio direto via Evolution API e fila de atendimento em tempo real.</p>
+        </div>
+        <div class="bf-card p-6">
+          <div class="feature-icon mb-4"><i class="fas fa-clock-rotate-left"></i></div>
+          <h3 class="font-semibold text-lg mb-2">Follow-up Inteligente</h3>
+          <p class="text-sm text-bf-secondary leading-relaxed">Sequências geram as próximas mensagens automaticamente. Você confere, envia — ou deixa o auto-send cuidar.</p>
+        </div>
+        <div class="bf-card p-6">
+          <div class="feature-icon mb-4"><i class="fas fa-bolt"></i></div>
+          <h3 class="font-semibold text-lg mb-2">Automações</h3>
+          <p class="text-sm text-bf-secondary leading-relaxed">Quando o status muda, a sequência certa é agendada sozinha. Nunca mais perca um follow-up.</p>
+        </div>
+        <div class="bf-card p-6">
+          <div class="feature-icon mb-4"><i class="fas fa-sparkles"></i></div>
+          <h3 class="font-semibold text-lg mb-2">Boostflow AI</h3>
+          <p class="text-sm text-bf-secondary leading-relaxed">Copiloto comercial: analisa leads, sugere mensagens, identifica oportunidades e recomenda a próxima ação.</p>
+        </div>
+        <div class="bf-card p-6">
+          <div class="feature-icon mb-4"><i class="fas fa-chart-line"></i></div>
+          <h3 class="font-semibold text-lg mb-2">Relatórios</h3>
+          <p class="text-sm text-bf-secondary leading-relaxed">Funil de vendas, taxa de conversão, receita e performance — métricas que importam para fechar mais.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-20 px-4 border-t border-bf-border">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl sm:text-3xl font-bold text-center mb-3">Preços simples e transparentes</h2>
+      <p class="text-bf-secondary text-center mb-12">Escolha o plano ideal para o tamanho da sua operação.</p>
+      <div class="grid md:grid-cols-3 gap-5">
+        <div class="bf-card p-7 flex flex-col">
+          <div class="text-bf-secondary text-sm font-medium mb-1">Starter</div>
+          <div class="text-3xl font-bold mb-1">R$ 97<span class="text-base font-normal text-bf-tertiary">/mês</span></div>
+          <p class="text-xs text-bf-tertiary mb-6">Para quem está começando</p>
+          <ul class="space-y-2.5 text-sm text-bf-secondary mb-8 flex-1">
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>CRM completo</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>WhatsApp</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Follow-ups</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Até 500 leads</li>
+          </ul>
+          <button type="button" class="plano-link btn-ghost w-full justify-center text-sm" data-plano="Starter" onclick="iniciarCheckout('starter')">Começar</button>
+        </div>
+        <div class="bf-card-elevated p-7 flex flex-col relative border-orange-500/40 shadow-glow">
+          <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-[10px] font-bold px-3 py-1 rounded-full tracking-wide">POPULAR</div>
+          <div class="text-orange-400 text-sm font-medium mb-1">Pro</div>
+          <div class="text-3xl font-bold mb-1">R$ 197<span class="text-base font-normal text-bf-tertiary">/mês</span></div>
+          <p class="text-xs text-bf-tertiary mb-6">Para equipes de vendas</p>
+          <ul class="space-y-2.5 text-sm text-bf-secondary mb-8 flex-1">
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Tudo do Starter</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Automações</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Boostflow AI</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Relatórios</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Leads ilimitados</li>
+          </ul>
+          <button type="button" class="plano-link btn-primary w-full justify-center text-sm" data-plano="Pro" onclick="iniciarCheckout('pro')">Começar agora</button>
+        </div>
+        <div class="bf-card p-7 flex flex-col">
+          <div class="text-bf-secondary text-sm font-medium mb-1">Business</div>
+          <div class="text-3xl font-bold mb-1">R$ 397<span class="text-base font-normal text-bf-tertiary">/mês</span></div>
+          <p class="text-xs text-bf-tertiary mb-6">Para operações maiores</p>
+          <ul class="space-y-2.5 text-sm text-bf-secondary mb-8 flex-1">
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Tudo do Pro</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Equipe multi-usuário</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Prioridade no suporte</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i>Onboarding dedicado</li>
+          </ul>
+          <button type="button" class="plano-link btn-ghost w-full justify-center text-sm" data-plano="Business" onclick="iniciarCheckout('business')">Falar com vendas</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-16 px-4 border-t border-bf-border">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-2xl sm:text-3xl font-bold mb-4">Pronto para aumentar suas vendas?</h2>
+      <p class="text-bf-secondary mb-8">Junte CRM, WhatsApp e IA em um único sistema operacional de vendas.</p>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <button onclick="irParaAdmin()" class="btn-primary text-base px-8 py-3.5">Começar agora</button>
+      </div>
+    </div>
+  </section>
+
+  <footer class="border-t border-bf-border py-8 px-4 text-center text-sm text-bf-tertiary">
+    © <span id="anoFooter"></span> Boostflow · Seu sistema operacional de vendas
+  </footer>
+</div>
+
+<!-- ==================== LOGIN ==================== -->
+<div id="login-screen" class="hidden min-h-screen flex items-center justify-center p-4 gradient-hero">
+  <div class="w-full max-w-md">
+    <div class="text-center mb-8">
+      <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white text-xl font-bold mx-auto mb-4 shadow-glow">B</div>
+      <h1 class="text-2xl font-bold tracking-tight">Boostflow</h1>
+      <p class="text-bf-secondary text-sm mt-1">Venda mais. Gerencie melhor.</p>
+    </div>
+    <div class="bf-card-elevated p-7">
+      <p class="text-sm text-bf-secondary mb-5" id="login-subtitle">Entrar no painel</p>
+      <div class="space-y-4">
+        <div id="cadastroNomeWrap" class="hidden">
+          <label class="block text-xs font-medium text-bf-secondary mb-1.5">Nome completo / Razão social</label>
+          <input type="text" id="cadastroNome" autocomplete="name" class="bf-input" placeholder="Seu nome ou razão social">
+        </div>
+        <div id="cadastroDocumentoWrap" class="hidden">
+          <label class="block text-xs font-medium text-bf-secondary mb-1.5">CPF ou CNPJ</label>
+          <input type="text" id="cadastroDocumento" inputmode="numeric" autocomplete="off" class="bf-input" placeholder="000.000.000-00 ou 00.000.000/0000-00" maxlength="18">
+          <p class="text-[11px] text-bf-tertiary mt-1.5">Usaremos este documento para identificar o titular da assinatura no Asaas.</p>
+        </div>
+        <div id="cadastroTelefoneWrap" class="hidden">
+          <label class="block text-xs font-medium text-bf-secondary mb-1.5">Telefone / WhatsApp</label>
+          <input type="tel" id="cadastroTelefone" inputmode="tel" autocomplete="tel" class="bf-input" placeholder="(38) 99999-9999" maxlength="15">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-bf-secondary mb-1.5">E-mail</label>
+          <input type="email" id="usuario" autocomplete="username" class="bf-input" placeholder="voce@email.com">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-bf-secondary mb-1.5">Senha</label>
+          <input type="password" id="senha" autocomplete="current-password" class="bf-input" placeholder="mínimo 6 caracteres">
+        </div>
+        <div id="cadastroConfirmarSenhaWrap" class="hidden">
+          <label class="block text-xs font-medium text-bf-secondary mb-1.5">Confirmar senha</label>
+          <input type="password" id="cadastroConfirmarSenha" autocomplete="new-password" class="bf-input" placeholder="Digite a senha novamente">
+        </div>
+      </div>
+      <button onclick="fazerLogin()" id="btnLogin" class="btn-primary w-full justify-center mt-6 py-3">Entrar</button>
+      <p id="login-error" class="text-red-400 text-sm text-center mt-3 hidden"></p>
+      <p id="login-info" class="text-green-400 text-sm text-center mt-3 hidden"></p>
+      <button onclick="alternarModoLogin()" id="btnAlternarModo" class="w-full text-center text-sm text-orange-400 font-medium mt-4 hover:text-orange-300 transition">Não tem conta ainda? Criar uma</button>
+    </div>
+    <button onclick="voltarLanding()" class="w-full text-center text-sm text-bf-tertiary mt-6 hover:text-bf-secondary transition">← Voltar para o site</button>
+    <p class="text-bf-tertiary text-[11px] text-center mt-4 leading-relaxed">Login protegido pelo Supabase — seus dados ficam isolados.</p>
+  </div>
+</div>
+
+<!-- ==================== APP SHELL ==================== -->
+<div id="admin-panel" class="hidden h-screen flex overflow-hidden">
+  <!-- Overlay mobile -->
+  <div id="sidebarOverlay" class="sidebar-overlay" onclick="fecharSidebarMobile()"></div>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar" class="sidebar flex flex-col h-full shrink-0">
+    <div class="flex items-center gap-3 px-5 py-5 border-b border-bf-border">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white font-bold text-sm shrink-0">B</div>
+      <div class="brand-text min-w-0">
+        <div class="font-bold text-sm leading-tight truncate">Boostflow</div>
+        <div class="text-[10px] text-bf-tertiary">Sales OS</div>
+      </div>
+      <button onclick="toggleSidebar()" class="btn-icon ml-auto hidden lg:flex" title="Recolher"><i class="fas fa-panel-left text-sm"></i></button>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto py-3">
+      <div class="nav-section-title">Principal</div>
+      <button onclick="mostrarSecao('dashboard', this)" class="nav-item menu-btn active" data-section="dashboard">
+        <i class="fas fa-chart-line w-5 text-center"></i><span class="nav-label">Dashboard</span>
+      </button>
+      <button onclick="mostrarSecao('clientes', this)" class="nav-item menu-btn" data-section="clientes">
+        <i class="fas fa-users w-5 text-center"></i><span class="nav-label">CRM</span>
+      </button>
+      <button onclick="mostrarSecao('conversas', this)" class="nav-item menu-btn" data-section="conversas">
+        <i class="fab fa-whatsapp w-5 text-center"></i><span class="nav-label">WhatsApp</span>
+        <span id="badgeConversas" class="badge hidden"></span>
+      </button>
+      <button onclick="mostrarSecao('followups', this)" class="nav-item menu-btn" data-section="followups">
+        <i class="fas fa-clock-rotate-left w-5 text-center"></i><span class="nav-label">Follow-up</span>
+      </button>
+      <button onclick="mostrarSecao('sequencias', this)" class="nav-item menu-btn" data-section="sequencias">
+        <i class="fas fa-list-ol w-5 text-center"></i><span class="nav-label">Sequências</span>
+      </button>
+      <button onclick="mostrarSecao('automacoes', this)" class="nav-item menu-btn" data-section="automacoes">
+        <i class="fas fa-bolt w-5 text-center"></i><span class="nav-label">Automações</span>
+      </button>
+      <button onclick="mostrarSecao('ia', this)" class="nav-item menu-btn" data-section="ia">
+        <i class="fas fa-sparkles w-5 text-center"></i><span class="nav-label">Boostflow AI</span>
+      </button>
+      <button onclick="mostrarSecao('relatorios', this)" class="nav-item menu-btn" data-section="relatorios">
+        <i class="fas fa-chart-pie w-5 text-center"></i><span class="nav-label">Relatórios</span>
+      </button>
+
+      <div class="nav-section-title mt-2">Conta</div>
+      <button onclick="mostrarSecao('equipe', this)" class="nav-item menu-btn" data-section="equipe">
+        <i class="fas fa-user-group w-5 text-center"></i><span class="nav-label">Equipe</span>
+      </button>
+      <button onclick="mostrarSecao('assinatura', this)" class="nav-item menu-btn" data-section="assinatura">
+        <i class="fas fa-credit-card w-5 text-center"></i><span class="nav-label">Assinatura</span>
+      </button>
+      <button onclick="abrirConfig()" class="nav-item">
+        <i class="fas fa-gear w-5 text-center"></i><span class="nav-label">Configurações</span>
+      </button>
+    </nav>
+
+    <div class="border-t border-bf-border p-3">
+      <button onclick="sair()" class="nav-item text-red-400 hover:text-red-300" style="width:calc(100% - 20px)">
+        <i class="fas fa-right-from-bracket w-5 text-center"></i><span class="nav-label">Sair</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+    <!-- Top bar -->
+    <header class="h-14 border-b border-bf-border flex items-center justify-between px-4 sm:px-6 shrink-0 bg-bf-surface/50">
+      <div class="flex items-center gap-3">
+        <button onclick="abrirSidebarMobile()" class="btn-icon lg:hidden"><i class="fas fa-bars"></i></button>
+        <div>
+          <div id="pageTitle" class="font-semibold text-sm">Dashboard</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-1">
+        <a href="#" id="topWaBtn" target="_blank" class="btn-icon text-green-500" title="WhatsApp"><i class="fab fa-whatsapp text-lg"></i></a>
+        <button onclick="abrirConfig()" class="btn-icon" title="Configurações"><i class="fas fa-gear"></i></button>
+      </div>
+    </header>
+
+    <!-- Content area -->
+    <main class="flex-1 overflow-y-auto p-4 sm:p-6">
+      <!-- DASHBOARD -->
+      <div id="secao-dashboard" class="fade-in">
+        <div class="mb-6">
+          <h1 class="text-xl sm:text-2xl font-bold" id="dashGreeting">Bom dia</h1>
+          <p class="text-sm text-bf-secondary mt-0.5">Aqui está o resumo da sua operação comercial.</p>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6" id="dashStats"></div>
+
+        <!-- Funnel -->
+        <div class="bf-card p-5 mb-6">
+          <h3 class="font-semibold text-sm mb-4">Funil de vendas</h3>
+          <div class="flex items-stretch gap-1 overflow-x-auto pb-2" id="dashFunnel"></div>
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-4 mb-6">
+          <!-- Chart -->
+          <div class="bf-card p-5">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-semibold text-sm">Atividade recente</h3>
+              <div class="flex gap-1">
+                <button onclick="setChartPeriod(7)" class="chart-period text-[11px] px-2.5 py-1 rounded-md bg-orange-500/15 text-orange-400 font-medium" data-p="7">7d</button>
+                <button onclick="setChartPeriod(30)" class="chart-period text-[11px] px-2.5 py-1 rounded-md text-bf-tertiary hover:text-bf-secondary font-medium" data-p="30">30d</button>
+                <button onclick="setChartPeriod(90)" class="chart-period text-[11px] px-2.5 py-1 rounded-md text-bf-tertiary hover:text-bf-secondary font-medium" data-p="90">90d</button>
+              </div>
+            </div>
+            <div id="dashChart" class="flex items-end gap-1.5 h-36"></div>
+          </div>
+
+          <!-- AI insight + próximos -->
+          <div class="space-y-4">
+            <div class="bf-card p-5 border-orange-500/20 bg-gradient-to-br from-orange-500/5 to-transparent">
+              <div class="flex items-center gap-2 mb-2">
+                <i class="fas fa-sparkles text-orange-400"></i>
+                <h3 class="font-semibold text-sm">Boostflow AI</h3>
+              </div>
+              <p class="text-sm text-bf-secondary mb-3" id="aiInsightText">Analisando seus leads...</p>
+              <button onclick="mostrarSecao('ia', document.querySelector('[data-section=ia]'))" class="text-xs text-orange-400 font-semibold hover:text-orange-300">Ver oportunidades →</button>
+            </div>
+            <div class="bf-card p-5">
+              <h3 class="font-semibold text-sm mb-3">Próximos follow-ups</h3>
+              <div id="dashProximos" class="space-y-2.5 text-sm"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CRM / CLIENTES -->
+      <div id="secao-clientes" class="hidden fade-in">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+          <div>
+            <h2 class="text-xl font-bold">CRM</h2>
+            <p class="text-sm text-bf-secondary">Gerencie seus leads e oportunidades</p>
+          </div>
+          <button onclick="abrirLeadModal()" class="btn-primary text-sm"><i class="fas fa-plus text-xs"></i> Novo lead</button>
+        </div>
+
+        <!-- Filters + view toggle -->
+        <div class="flex flex-col sm:flex-row gap-3 mb-4">
+          <div class="relative flex-1">
+            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-bf-tertiary text-sm"></i>
+            <input id="buscaLeads" oninput="renderClientes()" class="bf-input pl-10" placeholder="Buscar nome, telefone, origem...">
+          </div>
+          <div class="flex gap-2 overflow-x-auto">
+            <button onclick="setFiltroLead('todos')" class="filtro-lead text-xs px-3 py-2 rounded-lg border border-bf-border font-medium whitespace-nowrap active-filtro" data-f="todos">Todos</button>
+            <button onclick="setFiltroLead('Novo')" class="filtro-lead text-xs px-3 py-2 rounded-lg border border-bf-border font-medium whitespace-nowrap text-bf-secondary" data-f="Novo">Novos</button>
+            <button onclick="setFiltroLead('Em_conversa')" class="filtro-lead text-xs px-3 py-2 rounded-lg border border-bf-border font-medium whitespace-nowrap text-bf-secondary" data-f="Em_conversa">Em conversa</button>
+            <button onclick="setFiltroLead('Proposta')" class="filtro-lead text-xs px-3 py-2 rounded-lg border border-bf-border font-medium whitespace-nowrap text-bf-secondary" data-f="Proposta">Proposta</button>
+            <button onclick="setFiltroLead('Fechado')" class="filtro-lead text-xs px-3 py-2 rounded-lg border border-bf-border font-medium whitespace-nowrap text-bf-secondary" data-f="Fechado">Fechados</button>
+            <button onclick="setFiltroLead('Perdido')" class="filtro-lead text-xs px-3 py-2 rounded-lg border border-bf-border font-medium whitespace-nowrap text-bf-secondary" data-f="Perdido">Perdidos</button>
+          </div>
+          <div class="flex gap-1 border border-bf-border rounded-lg p-0.5">
+            <button onclick="setCrmView('lista')" id="viewLista" class="btn-icon !w-8 !h-8 !rounded-md bg-orange-500/15 text-orange-400"><i class="fas fa-list text-xs"></i></button>
+            <button onclick="setCrmView('kanban')" id="viewKanban" class="btn-icon !w-8 !h-8 !rounded-md"><i class="fas fa-columns text-xs"></i></button>
+          </div>
+        </div>
+
+        <div id="listaClientes"></div>
+        <div id="kanbanClientes" class="hidden overflow-x-auto pb-4"></div>
+      </div>
+
+      <!-- CONVERSAS / WHATSAPP -->
+      <div id="secao-conversas" class="hidden fade-in">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <h2 class="text-xl font-bold flex items-center gap-2"><i class="fab fa-whatsapp text-green-500"></i> WhatsApp</h2>
+            <p class="text-sm text-bf-secondary">Central de conversas</p>
+          </div>
+          <button onclick="carregarMensagens()" class="btn-icon" title="Atualizar"><i class="fas fa-rotate"></i></button>
+        </div>
+
+        <div class="flex flex-wrap gap-2 mb-4">
+          <span class="status-pill status-Fechado"><i class="fas fa-circle text-[6px]"></i> Conectado</span>
+          <span class="text-xs text-bf-tertiary px-2 py-1 border border-bf-border rounded-full"><span id="waTotalConversas">0</span> conversas</span>
+          <span class="text-xs text-red-400 px-2 py-1 border border-red-500/20 rounded-full bg-red-500/10"><span id="waNaoLidas">0</span> não lidas</span>
+          <span class="text-xs text-bf-tertiary px-2 py-1 border border-bf-border rounded-full"><span id="waHoje">0</span> hoje</span>
+        </div>
+
+        <div class="relative mb-3">
+          <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-bf-tertiary text-sm"></i>
+          <input id="buscaConversas" oninput="renderConversas()" class="bf-input pl-10" placeholder="Buscar nome, número ou mensagem...">
+        </div>
+        <div class="flex gap-2 mb-4">
+          <button id="filtroTodos" onclick="setFiltroConversas('todos')" class="text-xs px-3 py-1.5 rounded-full border border-orange-500/40 bg-orange-500/10 text-orange-400 font-semibold">Todos <span id="filtroTodosCount">0</span></button>
+          <button id="filtroNaoLidas" onclick="setFiltroConversas('nao_lidas')" class="text-xs px-3 py-1.5 rounded-full border border-bf-border text-bf-secondary font-medium">Não lidas <span id="filtroNaoLidasCount">0</span></button>
+        </div>
+        <div id="listaConversas" class="space-y-2"></div>
+      </div>
+
+      <!-- FOLLOW-UPS -->
+      <div id="secao-followups" class="hidden fade-in">
+        <div class="mb-5">
+          <h2 class="text-xl font-bold">Follow-ups</h2>
+          <p class="text-sm text-bf-secondary">Tarefas de acompanhamento pendentes</p>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6" id="fwStats"></div>
+        <div id="listaFollowups" class="space-y-3"></div>
+      </div>
+
+      <!-- SEQUÊNCIAS -->
+      <div id="secao-sequencias" class="hidden fade-in">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <h2 class="text-xl font-bold">Sequências</h2>
+            <p class="text-sm text-bf-secondary">Mensagens automáticas por etapa</p>
+          </div>
+          <button onclick="abrirSeqModal()" class="btn-primary text-sm"><i class="fas fa-plus text-xs"></i> Nova sequência</button>
+        </div>
+        <div id="listaSequencias" class="space-y-3"></div>
+      </div>
+
+      <!-- AUTOMAÇÕES -->
+      <div id="secao-automacoes" class="hidden fade-in">
+        <div class="mb-5">
+          <h2 class="text-xl font-bold">Automações</h2>
+          <p class="text-sm text-bf-secondary">Quando o status muda, a sequência entra na fila automaticamente.</p>
+        </div>
+        <div id="listaAutomacoes" class="space-y-3"></div>
+      </div>
+
+      <!-- IA -->
+      <div id="secao-ia" class="hidden fade-in">
+        <div class="mb-6">
+          <div class="flex items-center gap-2 mb-1">
+            <i class="fas fa-sparkles text-orange-400"></i>
+            <h2 class="text-xl font-bold">Boostflow AI</h2>
+          </div>
+          <p class="text-sm text-bf-secondary">Seu copiloto comercial.</p>
+        </div>
+
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+          <button class="ai-action-card" onclick="sugerirIA('Analise meus leads e diga quais têm maior probabilidade de fechamento.')">
+            <div class="text-orange-400 mb-2"><i class="fas fa-fire"></i></div>
+            <div class="font-semibold text-sm mb-1">Analisar leads</div>
+            <div class="text-xs text-bf-tertiary">Identifique oportunidades quentes</div>
+          </button>
+          <button class="ai-action-card" onclick="sugerirIA('Crie uma mensagem de follow-up persuasiva para um lead que não respondeu após a proposta.')">
+            <div class="text-orange-400 mb-2"><i class="fas fa-pen"></i></div>
+            <div class="font-semibold text-sm mb-1">Criar mensagem</div>
+            <div class="text-xs text-bf-tertiary">Gere textos de abordagem</div>
+          </button>
+          <button class="ai-action-card" onclick="sugerirIA('Qual a próxima melhor ação que eu deveria tomar agora com base nos meus leads e follow-ups?')">
+            <div class="text-orange-400 mb-2"><i class="fas fa-bullseye"></i></div>
+            <div class="font-semibold text-sm mb-1">Próxima melhor ação</div>
+            <div class="text-xs text-bf-tertiary">Priorize o que fazer agora</div>
+          </button>
+          <button class="ai-action-card" onclick="sugerirIA('Resuma o desempenho das minhas vendas e me dê insights práticos.')">
+            <div class="text-orange-400 mb-2"><i class="fas fa-chart-bar"></i></div>
+            <div class="font-semibold text-sm mb-1">Analisar vendas</div>
+            <div class="text-xs text-bf-tertiary">Insights sobre performance</div>
+          </button>
+          <button class="ai-action-card" onclick="sugerirIA('Me ajude a encontrar leads frios que valem a pena reativar.')">
+            <div class="text-orange-400 mb-2"><i class="fas fa-lightbulb"></i></div>
+            <div class="font-semibold text-sm mb-1">Encontrar oportunidades</div>
+            <div class="text-xs text-bf-tertiary">Leads esquecidos com potencial</div>
+          </button>
+          <button class="ai-action-card" onclick="sugerirIA('Como posso melhorar minha taxa de conversão com base no funil atual?')">
+            <div class="text-orange-400 mb-2"><i class="fas fa-brain"></i></div>
+            <div class="font-semibold text-sm mb-1">Melhorar conversão</div>
+            <div class="text-xs text-bf-tertiary">Dicas práticas para o funil</div>
+          </button>
+        </div>
+
+        <div class="bf-card flex flex-col" style="height:50vh;min-height:320px;">
+          <div id="iaChatMensagens" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+          <div class="border-t border-bf-border p-3 flex gap-2">
+            <input id="iaInput" type="text" placeholder="Digite sua mensagem..." class="bf-input !rounded-full" onkeydown="if(event.key==='Enter'){enviarMensagemIA();}">
+            <button onclick="enviarMensagemIA()" id="iaBtnEnviar" class="btn-primary !rounded-full !w-11 !h-11 !p-0 justify-center shrink-0"><i class="fas fa-paper-plane text-sm"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RELATÓRIOS -->
+      <div id="secao-relatorios" class="hidden fade-in">
+        <div class="mb-6">
+          <h2 class="text-xl font-bold">Relatórios</h2>
+          <p class="text-sm text-bf-secondary">Métricas da sua operação comercial</p>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" id="relStats"></div>
+        <div class="grid lg:grid-cols-2 gap-4">
+          <div class="bf-card p-5">
+            <h3 class="font-semibold text-sm mb-4">Distribuição por status</h3>
+            <div id="relStatusBars" class="space-y-3"></div>
+          </div>
+          <div class="bf-card p-5">
+            <h3 class="font-semibold text-sm mb-4">Origens dos leads</h3>
+            <div id="relOrigens" class="space-y-3"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EQUIPE -->
+      <div id="secao-equipe" class="hidden fade-in">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <h2 class="text-xl font-bold">Equipe</h2>
+            <p class="text-sm text-bf-secondary">Gerenciamento de membros</p>
+          </div>
+          <button onclick="toast('Em breve: convite de membros da equipe','info')" class="btn-primary text-sm"><i class="fas fa-plus text-xs"></i> Adicionar membro</button>
+        </div>
+        <div id="listaEquipe" class="space-y-3"></div>
+      </div>
+
+      <!-- ASSINATURA -->
+      <div id="secao-assinatura" class="hidden fade-in">
+        <div class="mb-6">
+          <h2 class="text-xl font-bold">Assinatura</h2>
+          <p class="text-sm text-bf-secondary">Gerencie seu plano</p>
+        </div>
+        <div class="bf-card-elevated p-6 sm:p-8 max-w-lg border-orange-500/30">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-bold text-orange-400 tracking-wide uppercase">Plano atual</span>
+          </div>
+          <h3 class="text-2xl font-bold mb-1">Boostflow Pro</h3>
+          <div class="text-3xl font-extrabold mb-6">R$ 197<span class="text-base font-normal text-bf-tertiary">/mês</span></div>
+          <ul class="space-y-2.5 text-sm text-bf-secondary mb-8">
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i> CRM completo + Kanban</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i> WhatsApp + Evolution API</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i> Follow-up + Automações</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i> Boostflow AI</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i> Relatórios</li>
+            <li><i class="fas fa-check text-orange-500 mr-2 text-xs"></i> Leads ilimitados</li>
+          </ul>
+          <div id="assinaturaStatus" class="mb-5"></div>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <button onclick="abrirGerenciamentoAssinatura()" class="btn-primary flex-1 justify-center">Gerenciar assinatura</button>
+            <button onclick="carregarAssinatura(true)" class="btn-ghost justify-center" title="Atualizar status"><i class="fas fa-rotate"></i></button>
+          </div>
+          <div id="historicoPagamentos" class="mt-6"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+</div>
+
+<!-- ===== MODAL LEAD ===== -->
+<dialog id="leadModal" class="w-full max-w-md">
+  <form method="dialog" class="p-6" onsubmit="salvarLead(event)">
+    <h3 class="font-bold text-lg mb-5" id="leadModalTitulo">Novo lead</h3>
+    <input type="hidden" id="leadId">
+    <div class="space-y-3.5">
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">Nome</label>
+        <input required id="leadNome" class="bf-input">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">WhatsApp (só números, com DDD)</label>
+        <input required id="leadTelefone" placeholder="38999998888" class="bf-input">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">Origem</label>
+        <input id="leadOrigem" placeholder="Instagram, indicação..." class="bf-input">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">Status</label>
+        <select id="leadStatus" class="bf-input">
+          <option value="Novo">Novo</option>
+          <option value="Em_conversa">Em conversa</option>
+          <option value="Proposta">Proposta</option>
+          <option value="Fechado">Fechado</option>
+          <option value="Perdido">Perdido</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">Anotações</label>
+        <textarea id="leadNotas" rows="2" class="bf-input"></textarea>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-6 items-center">
+      <button type="button" onclick="excluirLeadAtual()" id="btnExcluirLead" class="hidden text-red-400 text-sm font-medium mr-auto hover:text-red-300">Excluir</button>
+      <button type="button" onclick="fecharModal('leadModal')" class="btn-ghost text-sm">Cancelar</button>
+      <button type="submit" class="btn-primary text-sm">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ===== MODAL SEQUÊNCIA ===== -->
+<dialog id="seqModal" class="w-full max-w-lg">
+  <form method="dialog" class="p-6" onsubmit="salvarSequencia(event)">
+    <h3 class="font-bold text-lg mb-5" id="seqModalTitulo">Nova sequência</h3>
+    <input type="hidden" id="seqId">
+    <div class="space-y-3.5">
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">Nome da sequência</label>
+        <input required id="seqNome" class="bf-input">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">Descrição curta</label>
+        <input id="seqDescricao" placeholder="Ex: Para leads novos" class="bf-input">
+      </div>
+      <div>
+        <div class="flex justify-between items-center mb-1.5">
+          <label class="block text-xs font-medium text-bf-secondary">Mensagens da sequência</label>
+          <button type="button" onclick="adicionarPasso()" class="text-orange-400 text-xs font-semibold hover:text-orange-300">+ Adicionar passo</button>
+        </div>
+        <div id="passosSequencia" class="space-y-2"></div>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-6 items-center">
+      <button type="button" onclick="excluirSeqAtual()" id="btnExcluirSeq" class="hidden text-red-400 text-sm font-medium mr-auto hover:text-red-300">Excluir</button>
+      <button type="button" onclick="fecharModal('seqModal')" class="btn-ghost text-sm">Cancelar</button>
+      <button type="submit" class="btn-primary text-sm">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ===== MODAL CONFIG ===== -->
+<dialog id="configModal" class="w-full max-w-md">
+  <form method="dialog" class="p-6" onsubmit="salvarConfig(event)">
+    <h3 class="font-bold text-lg mb-1">Configurações</h3>
+    <p class="text-xs text-bf-tertiary mb-5">Dados salvos na sua conta (Supabase).</p>
+    <div class="space-y-3.5">
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">WhatsApp da empresa (DDI+DDD, só números)</label>
+        <input id="cfgWhats" placeholder="5538999999999" class="bf-input">
+      </div>
+    </div>
+    <hr class="my-5 border-bf-border">
+    <h4 class="font-semibold text-sm mb-1 flex items-center gap-2"><i class="fas fa-plug text-orange-400"></i> Envio automático (Evolution API)</h4>
+    <p class="text-xs text-bf-tertiary mb-3">Preencha para ligar o disparo automático.</p>
+    <div class="space-y-3.5">
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">URL da Evolution API</label>
+        <input id="cfgEvoUrl" placeholder="https://sua-instancia.up.railway.app" class="bf-input">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">Nome da instância</label>
+        <input id="cfgEvoInstance" placeholder="zapfollow" class="bf-input">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-bf-secondary mb-1">Token da instância (apikey)</label>
+        <input id="cfgEvoKey" type="password" placeholder="cole o token aqui" class="bf-input">
+      </div>
+      <div class="flex items-center justify-between bg-bf-bg rounded-lg px-3 py-2.5 border border-bf-border">
+        <div>
+          <div class="text-xs font-medium">Envio 100% automático</div>
+          <div class="text-[10px] text-bf-tertiary">Dispara sozinho enquanto esta aba estiver aberta</div>
+        </div>
+        <input type="checkbox" id="cfgAutoSend" class="w-5 h-5 accent-orange-500">
+      </div>
+      <button type="button" onclick="testarConexaoEvo()" class="btn-ghost w-full justify-center text-sm">
+        <i class="fas fa-satellite-dish"></i> Testar conexão
+      </button>
+      <div id="evoTestResult" class="text-xs"></div>
+    </div>
+    <div class="bg-orange-500/10 text-orange-300/90 text-xs rounded-lg p-3 mt-4 leading-relaxed border border-orange-500/20">
+      Com a Evolution API preenchida, o "Enviar agora" manda a mensagem direto. Com auto-send ligado, follow-ups vencidos disparam a cada minuto (aba aberta).
+    </div>
+    <div class="flex gap-2 mt-6 justify-end">
+      <button type="button" onclick="fecharModal('configModal')" class="btn-ghost text-sm">Cancelar</button>
+      <button type="submit" class="btn-primary text-sm">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+/* ======================= SUPABASE ======================= */
+const SUPABASE_URL = 'https://omdoglxuppiilpvvezsw.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_ooUxkkOsnIVvVoK4Jo-rkQ_bhgSyLwu';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ======================= ESTADO ======================= */
+let db = {
+  config: { whats: "5538999999999", evoUrl: "", evoInstance: "", evoKey: "", autoSend: false },
+  leads: [], sequencias: [], automacoes: [], followups: [], mensagens: []
+};
+
+const SEQUENCIAS_PADRAO = [
+  {nome:"Follow-up Padrão", descricao:"Para leads novos", passos:[
+    {dias:1, mensagem:"Oi {nome}! Tudo bem? Vi que você se interessou pelos nossos produtos, posso te ajudar com alguma dúvida?"},
+    {dias:3, mensagem:"Oi {nome}, passando pra saber se ainda tem interesse — tenho novidades que podem te interessar."},
+    {dias:7, mensagem:"Oi {nome}! Última tentativa por aqui — se ainda fizer sentido pra você, é só chamar."}
+  ]},
+  {nome:"Recuperação de Lead Frio", descricao:"Leads sem resposta", passos:[
+    {dias:0, mensagem:"Oi {nome}, faz um tempo que não conversamos — ainda está em busca do que combinamos?"},
+    {dias:4, mensagem:"Oi {nome}! Deixando essa mensagem por aqui, qualquer coisa é só chamar."}
+  ]},
+  {nome:"Pós-Proposta", descricao:"Depois de enviar orçamento", passos:[
+    {dias:1, mensagem:"Oi {nome}! O que achou da proposta que te enviei?"},
+    {dias:3, mensagem:"Oi {nome}, a proposta ainda está válida — posso ajustar algo pra fechar com você?"}
+  ]}
+];
+
+const STATUS_ORDER = ['Novo','Em_conversa','Proposta','Fechado','Perdido'];
+let filtroLead = 'todos';
+let crmView = 'lista';
+let chartPeriod = 7;
+let filtroConversas = 'todos';
+let modoLogin = 'entrar';
+let iaConversationId = null;
+let iaHistorico = [];
+let autoSendTimer = null;
+let mensagensPollingTimer = null;
+let sidebarCollapsed = false;
+
+function statusLabel(s){ return {Novo:"Novo", Em_conversa:"Em conversa", Proposta:"Proposta", Fechado:"Fechado", Perdido:"Perdido"}[s] || s; }
+function fmtData(ts){ return new Date(ts).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'}); }
+function fmtHora(ts){ return new Date(ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+function normalizarTelefoneBR(numero){
+  let n = (numero || '').replace(/\D/g,'');
+  if(n.length === 10 || n.length === 11) n = '55' + n;
+  return n;
+}
+function waHref(telefone, msg){ return `https://wa.me/${normalizarTelefoneBR(telefone)}?text=${encodeURIComponent(msg||'')}`; }
+function esc(v){ return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+
+function toast(msg, type='info'){
+  const c = document.getElementById('toast-container');
+  const icons = { success:'fa-check-circle text-green-400', error:'fa-circle-exclamation text-red-400', info:'fa-info-circle text-orange-400' };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<i class="fas ${icons[type]||icons.info}"></i><span>${esc(msg)}</span>`;
+  c.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),300); }, 3500);
+}
+
+function saudacao(){
+  const h = new Date().getHours();
+  if(h < 12) return 'Bom dia';
+  if(h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+/* ======================= SIDEBAR ======================= */
+function toggleSidebar(){
+  sidebarCollapsed = !sidebarCollapsed;
+  document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
+}
+function abrirSidebarMobile(){
+  document.getElementById('sidebar').classList.add('mobile-open');
+  document.getElementById('sidebarOverlay').classList.add('show');
+}
+function fecharSidebarMobile(){
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebarOverlay').classList.remove('show');
+}
+
+/* ======================= SUPABASE DATA ======================= */
+async function carregarTudo(){
+  const [leadsRes, seqRes, autoRes, fwRes, msgRes, cfgRes] = await Promise.all([
+    sb.from('leads').select('*').order('criado_em', {ascending:false}),
+    sb.from('sequencias').select('*').order('criado_em', {ascending:true}),
+    sb.from('automacoes').select('*'),
+    sb.from('followups').select('*'),
+    sb.from('mensagens').select('*').limit(200),
+    sb.from('config').select('*').maybeSingle()
+  ]);
+  db.leads = (leadsRes.data||[]).map(r=>({id:r.id, nome:r.nome, telefone:r.telefone, origem:r.origem, status:r.status, notas:r.notas, criadoEm: new Date(r.criado_em).getTime()}));
+  db.sequencias = (seqRes.data||[]).map(r=>({id:r.id, nome:r.nome, descricao:r.descricao, passos:r.passos||[]}));
+  db.automacoes = (autoRes.data||[]).map(r=>({id:r.id, gatilhoStatus:r.gatilho_status, sequenciaId:r.sequencia_id, ativo:r.ativo}));
+  db.followups = (fwRes.data||[]).map(r=>({id:r.id, leadId:r.lead_id, sequenciaId:r.sequencia_id, mensagem:r.mensagem, dueEm: new Date(r.due_em).getTime(), enviado:r.enviado, enviadoAutomaticamente:r.enviado_automaticamente}));
+  db.mensagens = (msgRes.data||[]).map(normalizarMensagem);
+  if(cfgRes.data){
+    db.config = {
+      whats: cfgRes.data.whats || "5538999999999",
+      evoUrl: cfgRes.data.evo_url || "",
+      evoInstance: cfgRes.data.evo_instance || "",
+      evoKey: cfgRes.data.evo_key || "",
+      autoSend: !!cfgRes.data.auto_send
+    };
+  }
+}
+
+async function semearDadosIniciais(userId){
+  const { data: cfgExistente } = await sb.from('config').select('user_id').eq('user_id', userId).maybeSingle();
+  if(cfgExistente) return;
+  await sb.from('config').insert({ user_id: userId, whats: "5538999999999", auto_send: false });
+  const seqParaInserir = SEQUENCIAS_PADRAO.map(s=>({ user_id: userId, nome:s.nome, descricao:s.descricao, passos:s.passos }));
+  const { data: seqsCriadas } = await sb.from('sequencias').insert(seqParaInserir).select();
+  if(seqsCriadas && seqsCriadas.length === 3){
+    await sb.from('automacoes').insert([
+      { user_id: userId, gatilho_status: 'Novo', sequencia_id: seqsCriadas[0].id, ativo: true },
+      { user_id: userId, gatilho_status: 'Proposta', sequencia_id: seqsCriadas[2].id, ativo: true },
+      { user_id: userId, gatilho_status: 'Em_conversa', sequencia_id: seqsCriadas[1].id, ativo: false }
+    ]);
+  }
+}
+
+/* ======================= AUTH ======================= */
+async function irParaAdmin(){
+  document.getElementById('landing').classList.add('hidden');
+  const { data: { session } } = await sb.auth.getSession();
+  if(session){ await abrirPainelLogado(); }
+  else { document.getElementById('login-screen').classList.remove('hidden'); }
+}
+function voltarLanding(){
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('landing').classList.remove('hidden');
+}
+function formatarDocumentoCadastro(valor){
+  const n = String(valor || '').replace(/\D/g,'').slice(0,14);
+  if(n.length <= 11){
+    return n.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+  }
+  return n.replace(/(\d{2})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1/$2').replace(/(\d{4})(\d{1,2})$/,'$1-$2');
+}
+function formatarTelefoneCadastro(valor){
+  const n = String(valor || '').replace(/\D/g,'').slice(0,11);
+  if(n.length <= 10){
+    return n.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{4})(\d{1,4})$/,'$1-$2');
+  }
+  return n.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{5})(\d{1,4})$/,'$1-$2');
+}
+function documentoValidoCadastro(valor){
+  const n=String(valor||'').replace(/\D/g,'');
+  if(n.length!==11 && n.length!==14) return false;
+  if(/^([0-9])\1+$/.test(n)) return false;
+  if(n.length===11){
+    let soma=0; for(let i=0;i<9;i++) soma+=Number(n[i])*(10-i);
+    let d1=(soma*10)%11; if(d1===10) d1=0; if(d1!==Number(n[9])) return false;
+    soma=0; for(let i=0;i<10;i++) soma+=Number(n[i])*(11-i);
+    let d2=(soma*10)%11; if(d2===10) d2=0; return d2===Number(n[10]);
+  }
+  let soma=0, peso=5; for(let i=0;i<12;i++){ soma+=Number(n[i])*peso; peso=peso===2?9:peso-1; }
+  let d1=soma%11<2?0:11-(soma%11); if(d1!==Number(n[12])) return false;
+  soma=0; peso=6; for(let i=0;i<13;i++){ soma+=Number(n[i])*peso; peso=peso===2?9:peso-1; }
+  let d2=soma%11<2?0:11-(soma%11); return d2===Number(n[13]);
+}
+function mostrarCamposCadastro(mostrar){
+  ['cadastroNomeWrap','cadastroDocumentoWrap','cadastroTelefoneWrap','cadastroConfirmarSenhaWrap'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.classList.toggle('hidden', !mostrar);
+  });
+  const senha=document.getElementById('senha');
+  if(senha) senha.autocomplete=mostrar?'new-password':'current-password';
+}
+function alternarModoLogin(){
+  modoLogin = modoLogin === 'entrar' ? 'criar' : 'entrar';
+  mostrarCamposCadastro(modoLogin === 'criar');
+  document.getElementById('login-subtitle').textContent = modoLogin === 'entrar' ? 'Entrar no painel' : 'Criar sua conta';
+  document.getElementById('btnLogin').textContent = modoLogin === 'entrar' ? 'Entrar' : 'Criar conta';
+  document.getElementById('btnAlternarModo').textContent = modoLogin === 'entrar' ? 'Não tem conta ainda? Criar uma' : 'Já tem conta? Entrar';
+  document.getElementById('login-error').classList.add('hidden');
+  document.getElementById('login-info').classList.add('hidden');
+}
+async function fazerLogin(){
+  const email = document.getElementById('usuario').value.trim();
+  const senha = document.getElementById('senha').value;
+  const erroEl = document.getElementById('login-error');
+  const infoEl = document.getElementById('login-info');
+  erroEl.classList.add('hidden'); infoEl.classList.add('hidden');
+  const btn = document.getElementById('btnLogin');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Aguarde...';
+
+  if(modoLogin === 'criar'){
+    const nome = document.getElementById('cadastroNome').value.trim();
+    const documento = document.getElementById('cadastroDocumento').value.trim().replace(/\D/g,'');
+    const telefone = document.getElementById('cadastroTelefone').value.trim().replace(/\D/g,'');
+    const confirmarSenha = document.getElementById('cadastroConfirmarSenha').value;
+    if(!nome){ btn.disabled=false; btn.textContent=textoOriginal; erroEl.textContent='Informe seu nome completo ou razão social.'; erroEl.classList.remove('hidden'); return; }
+    if(!documentoValidoCadastro(documento)){ btn.disabled=false; btn.textContent=textoOriginal; erroEl.textContent='Informe um CPF ou CNPJ válido.'; erroEl.classList.remove('hidden'); return; }
+    if(telefone.length < 10 || telefone.length > 11){ btn.disabled=false; btn.textContent=textoOriginal; erroEl.textContent='Informe um telefone/WhatsApp válido com DDD.'; erroEl.classList.remove('hidden'); return; }
+
+    // Se o usuário já está logado e só precisa completar o cadastro de cobrança,
+    // atualizamos os metadados em vez de tentar criar uma segunda conta.
+    const { data:sessionData } = await sb.auth.getSession();
+    if(sessionData?.session){
+      const { data, error } = await sb.auth.updateUser({
+        data: { full_name: nome, name: nome, cpf_cnpj: documento, document: documento, phone: telefone }
+      });
+      btn.disabled=false; btn.textContent=textoOriginal;
+      if(error){ erroEl.textContent=error.message || 'Não foi possível salvar seus dados.'; erroEl.classList.remove('hidden'); return; }
+      const planoPendente=sessionStorage.getItem('boostflow_checkout_plan');
+      if(planoPendente){
+        sessionStorage.removeItem('boostflow_checkout_plan');
+        await executarCheckout(planoPendente);
+      } else {
+        await abrirPainelLogado();
+      }
+      return;
+    }
+
+    if(!email || !senha){ btn.disabled=false; btn.textContent=textoOriginal; erroEl.textContent = 'Preencha e-mail e senha.'; erroEl.classList.remove('hidden'); return; }
+    if(senha.length < 6){ btn.disabled=false; btn.textContent=textoOriginal; erroEl.textContent='A senha precisa ter pelo menos 6 caracteres.'; erroEl.classList.remove('hidden'); return; }
+    if(senha !== confirmarSenha){ btn.disabled=false; btn.textContent=textoOriginal; erroEl.textContent='As senhas não conferem.'; erroEl.classList.remove('hidden'); return; }
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password: senha,
+      options: { data: { full_name: nome, name: nome, cpf_cnpj: documento, document: documento, phone: telefone } }
+    });
+    btn.disabled = false; btn.textContent = textoOriginal;
+    if(error){ erroEl.textContent = error.message; erroEl.classList.remove('hidden'); return; }
+    if(data.session){ await abrirPainelLogado(); }
+    else {
+      infoEl.textContent = 'Conta criada! Verifique seu e-mail para confirmar antes de entrar.';
+      infoEl.classList.remove('hidden');
+      alternarModoLogin();
+    }
+  } else {
+    if(!email || !senha){ btn.disabled=false; btn.textContent=textoOriginal; erroEl.textContent = 'Preencha e-mail e senha.'; erroEl.classList.remove('hidden'); return; }
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: senha });
+    btn.disabled = false; btn.textContent = textoOriginal;
+    if(error){ erroEl.textContent = 'E-mail ou senha incorretos.'; erroEl.classList.remove('hidden'); return; }
+    await abrirPainelLogado();
+  }
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const doc=document.getElementById('cadastroDocumento');
+  const tel=document.getElementById('cadastroTelefone');
+  if(doc) doc.addEventListener('input',()=>doc.value=formatarDocumentoCadastro(doc.value));
+  if(tel) tel.addEventListener('input',()=>tel.value=formatarTelefoneCadastro(tel.value));
+});
+async function abrirPainelLogado(){
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user) return;
+
+  // Se o usuário chegou aqui depois de clicar em um plano, conclui automaticamente
+  // o fluxo de checkout antes de bloquear o painel por falta de assinatura.
+  const planoPendente = sessionStorage.getItem('boostflow_checkout_plan');
+  const acesso = await verificarAcessoAssinatura();
+  if(!acesso.ok && planoPendente && ['missing','pending','canceled','expired','suspended'].includes(acesso.status)){
+    sessionStorage.removeItem('boostflow_checkout_plan');
+    await executarCheckout(planoPendente);
+    return;
+  }
+
+  if(!acesso.ok){
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('admin-panel').classList.add('hidden');
+    mostrarBloqueioAssinatura(acesso);
+    return;
+  }
+  await semearDadosIniciais(user.id);
+  await carregarTudo();
+  document.getElementById('billing-block-overlay').classList.add('hidden');
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('admin-panel').classList.remove('hidden');
+  renderTudo();
+  await carregarAssinatura(true);
+  configurarAutoSendLoop();
+  iniciarRealtimeMensagens();
+}
+
+async function verificarAcessoAssinatura(){
+  try{
+    const {data:{user}}=await sb.auth.getUser();
+    if(!user) return {ok:false,status:'unauthenticated'};
+    // Conta proprietária do Boostflow: acesso administrativo sem assinatura.
+    if((user.email || '').toLowerCase() === 'boostflow43@gmail.com') return {ok:true,status:'owner',sub:null,owner:true};
+    const {data:sub,error}=await sb.from('assinaturas').select('id,status,checkout_url,current_period_end,planos(nome,preco_mensal)').eq('usuario_id',user.id).order('criado_em',{ascending:false}).limit(1).maybeSingle();
+    if(error) throw error;
+    if(!sub) return {ok:false,status:'missing',sub:null};
+    if(sub.status==='active') return {ok:true,status:'active',sub};
+    return {ok:false,status:sub.status,sub};
+  }catch(error){
+    console.error('Falha ao verificar assinatura',error);
+    return {ok:false,status:'error'};
+  }
+}
+
+function mostrarBloqueioAssinatura(acesso){
+  const overlay=document.getElementById('billing-block-overlay');
+  const title=document.getElementById('billing-block-title');
+  const text=document.getElementById('billing-block-text');
+  const btn=document.getElementById('billing-block-pay');
+  const status=document.getElementById('billing-block-status');
+  overlay.classList.remove('hidden');
+  btn.classList.remove('hidden');
+  if(acesso.status==='overdue'){
+    title.textContent='Pagamento em atraso';
+    text.textContent='O pagamento da sua assinatura não foi confirmado. Regularize a cobrança para liberar novamente o CRM.';
+  }else if(acesso.status==='pending'){
+    title.textContent='Finalize sua assinatura';
+    text.textContent='Seu checkout ainda está pendente. Conclua o pagamento para liberar o acesso ao Boostflow CRM.';
+  }else if(acesso.status==='canceled' || acesso.status==='expired' || acesso.status==='suspended'){
+    title.textContent='Assinatura inativa';
+    text.textContent='Sua assinatura não está ativa. Escolha um plano e regularize o acesso para continuar.';
+  }else if(acesso.status==='missing'){
+    title.textContent='Ative seu Boostflow';
+    text.textContent='Escolha um plano para liberar o acesso ao CRM.';
+  }else{
+    title.textContent='Não foi possível validar sua assinatura';
+    text.textContent='Tente novamente em alguns instantes.';
+    btn.classList.add('hidden');
+  }
+  status.textContent=acesso.sub?.planos?.nome ? `Plano: ${acesso.sub.planos.nome}` : '';
+  window._billingBlocked=acesso;
+}
+
+async function regularizarAssinatura(){
+  const acesso=window._billingBlocked || await verificarAcessoAssinatura();
+  if(acesso?.sub?.checkout_url){
+    window.open(acesso.sub.checkout_url,'_blank','noopener');
+    return;
+  }
+  if(acesso?.status==='error') { toast('Não foi possível verificar a assinatura. Tente novamente.','error'); return; }
+  document.getElementById('billing-block-overlay').classList.add('hidden');
+  document.getElementById('landing').classList.remove('hidden');
+  window.scrollTo({top:document.getElementById('planos')?.offsetTop || 0,behavior:'smooth'});
+}
+async function sair(){
+  await sb.auth.signOut();
+  if(autoSendTimer){ clearInterval(autoSendTimer); autoSendTimer = null; }
+  document.getElementById('admin-panel').classList.add('hidden');
+  document.getElementById('landing').classList.remove('hidden');
+  document.getElementById('usuario').value = '';
+  document.getElementById('senha').value = '';
+}
+
+const PAGE_TITLES = {
+  dashboard:'Dashboard', clientes:'CRM', conversas:'WhatsApp', followups:'Follow-ups',
+  sequencias:'Sequências', automacoes:'Automações', ia:'Boostflow AI',
+  relatorios:'Relatórios', equipe:'Equipe', assinatura:'Assinatura'
+};
+
+function mostrarSecao(nome, btn){
+  ['dashboard','clientes','conversas','followups','sequencias','automacoes','ia','relatorios','equipe','assinatura'].forEach(s=>{
+    const el = document.getElementById('secao-'+s);
+    if(el) el.classList.add('hidden');
+  });
+  const target = document.getElementById('secao-'+nome);
+  if(target){ target.classList.remove('hidden'); target.classList.add('fade-in'); }
+  document.querySelectorAll('.menu-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  else {
+    const match = document.querySelector(`[data-section="${nome}"]`);
+    if(match) match.classList.add('active');
+  }
+  const pt = document.getElementById('pageTitle');
+  if(pt) pt.textContent = PAGE_TITLES[nome] || nome;
+  fecharSidebarMobile();
+
+  if(nome==='dashboard') renderDashboard();
+  if(nome==='clientes') renderClientes();
+  if(nome==='conversas') renderConversas();
+  if(nome==='followups') renderFollowups();
+  if(nome==='sequencias') renderSequencias();
+  if(nome==='automacoes') renderAutomacoes();
+  if(nome==='ia') renderChatIA();
+  if(nome==='relatorios') renderRelatorios();
+  if(nome==='equipe') renderEquipe();
+  if(nome==='assinatura') carregarAssinatura();
+}
+
+/* ======================= LINKS ======================= */
+function atualizarLinksFixos(){
+  document.getElementById('topWaBtn').href = waHref(db.config.whats, "");
+  document.querySelectorAll('.plano-link').forEach(b=>{
+    b.type='button';
+    b.dataset.ready='1';
+  });
+  document.getElementById('anoFooter').textContent = new Date().getFullYear();
+}
+
+/* ======================= PAGAMENTOS / ASAAS ======================= */
+const BILLING_FUNCTION = `${SUPABASE_URL}/functions/v1/asaas-create-checkout`;
+const APP_URL = window.location.origin;
+
+function normalizarPlano(plano){
+  const map = { Starter:'starter', Pro:'pro', Business:'business', starter:'starter', pro:'pro', business:'business' };
+  return map[String(plano || '').trim()] || String(plano || '').trim().toLowerCase();
+}
+function moedaBR(v){
+  return Number(v || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+}
+function dataBR(v){
+  if(!v) return '—';
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('pt-BR');
+}
+function statusAssinaturaLabel(s){
+  const m = {
+    active:['Ativa','text-green-400','bg-green-500/10','border-green-500/20'],
+    pending:['Aguardando pagamento','text-yellow-400','bg-yellow-500/10','border-yellow-500/20'],
+    overdue:['Pagamento atrasado','text-red-400','bg-red-500/10','border-red-500/20'],
+    canceled:['Cancelada','text-red-400','bg-red-500/10','border-red-500/20'],
+    expired:['Expirada','text-red-400','bg-red-500/10','border-red-500/20'],
+    suspended:['Suspensa','text-red-400','bg-red-500/10','border-red-500/20']
+  };
+  return m[s] || ['Sem assinatura','text-bf-secondary','bg-bf-bg','border-bf-border'];
+}
+
+async function iniciarCheckout(plano){
+  const planSlug = normalizarPlano(plano);
+  if(!['starter','pro','business'].includes(planSlug)){
+    toast('Plano inválido. Escolha um dos planos disponíveis.','error');
+    return;
+  }
+  sessionStorage.setItem('boostflow_checkout_plan', planSlug);
+  const { data:{session} } = await sb.auth.getSession();
+  if(!session){
+    document.getElementById('landing')?.classList.add('hidden');
+    document.getElementById('admin-panel')?.classList.add('hidden');
+    document.getElementById('login-screen')?.classList.remove('hidden');
+    if(modoLogin !== 'criar') alternarModoLogin();
+    const info=document.getElementById('login-info');
+    if(info){ info.textContent = `Crie sua conta para assinar o plano ${planSlug.toUpperCase()}.`; info.classList.remove('hidden'); }
+    return;
+  }
+  const meta = session.user?.user_metadata || {};
+  const doc = String(meta.cpf_cnpj || meta.document || '').replace(/\D/g,'');
+  const phone = String(meta.phone || '').replace(/\D/g,'');
+  if(!meta.full_name || !documentoValidoCadastro(doc) || phone.length < 10 || phone.length > 11){
+    sessionStorage.setItem('boostflow_checkout_plan', planSlug);
+    if(modoLogin !== 'criar') alternarModoLogin();
+    document.getElementById('btnLogin').textContent='Salvar dados e continuar';
+    const nome=document.getElementById('cadastroNome');
+    const documento=document.getElementById('cadastroDocumento');
+    const telefone=document.getElementById('cadastroTelefone');
+    if(nome) nome.value=meta.full_name || meta.name || '';
+    if(documento) documento.value=formatarDocumentoCadastro(doc);
+    if(telefone) telefone.value=formatarTelefoneCadastro(phone);
+    const info=document.getElementById('login-info');
+    if(info){ info.textContent='Complete seus dados de cobrança (CPF/CNPJ e telefone) para continuar com a assinatura.'; info.classList.remove('hidden'); }
+    return;
+  }
+  await executarCheckout(planSlug);
+}
+
+async function executarCheckout(planSlug){
+  const links = [...document.querySelectorAll('.plano-link')];
+  links.forEach(a=>a.classList.add('pointer-events-none','opacity-60'));
+  toast('Preparando checkout seguro...', 'info');
+  try{
+    const { data:{session} } = await sb.auth.getSession();
+    if(!session) throw new Error('Sua sessão expirou. Entre novamente.');
+    const resp = await fetch(BILLING_FUNCTION,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${session.access_token}`,
+        'apikey':SUPABASE_ANON_KEY
+      },
+      body:JSON.stringify({plan_slug:planSlug, app_url:APP_URL})
+    });
+    const raw = await resp.text().catch(()=> '');
+    let data = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: raw || 'Resposta inválida do servidor.' }; }
+    if(!resp.ok || !data.ok){
+      const detail = data?.details?.errors?.[0]?.description;
+      throw new Error(detail || data.error || `Não foi possível criar o checkout (HTTP ${resp.status}).`);
+    }
+    if(data.already_active){
+      toast('Você já possui uma assinatura ativa.','success');
+      mostrarSecao('assinatura', document.querySelector('[data-section="assinatura"]'));
+      await carregarAssinatura(true);
+      return;
+    }
+    const checkoutUrl = data.checkout_url || data.checkoutUrl || data.link;
+    if(!checkoutUrl) throw new Error('O checkout não retornou um link.');
+    window.location.href = checkoutUrl;
+  }catch(err){
+    console.error(err);
+    toast(err.message || 'Erro ao iniciar pagamento.','error');
+  }finally{
+    links.forEach(a=>a.classList.remove('pointer-events-none','opacity-60'));
+  }
+}
+
+async function abrirGerenciamentoAssinatura(){
+  await carregarAssinatura(true);
+  const { data:{user} } = await sb.auth.getUser();
+  if(!user) return;
+  const { data:sub } = await sb.from('assinaturas')
+    .select('checkout_url,status,subscription_id')
+    .eq('usuario_id',user.id)
+    .order('criado_em',{ascending:false})
+    .limit(1).maybeSingle();
+  if(sub?.checkout_url && ['pending','active'].includes(sub.status)){
+    window.open(sub.checkout_url,'_blank','noopener');
+    return;
+  }
+  if(sub?.status === 'active'){
+    toast('Sua assinatura está ativa. O gerenciamento completo de cobrança fica disponível pelo portal do Asaas.','info');
+    return;
+  }
+  const escolha = confirm('Você ainda não possui uma assinatura ativa. Deseja voltar aos planos e escolher um plano?');
+  if(escolha) window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function carregarAssinatura(quiet=false){
+  const statusEl = document.getElementById('assinaturaStatus');
+  const histEl = document.getElementById('historicoPagamentos');
+  if(!statusEl) return;
+  if(!quiet) statusEl.innerHTML = '<div class="text-sm text-bf-tertiary"><i class="fas fa-spinner fa-spin mr-2"></i>Carregando assinatura...</div>';
+  try{
+    const { data:{user} } = await sb.auth.getUser();
+    if(!user) return;
+    const { data:sub, error } = await sb.from('assinaturas')
+      .select('*, planos(nome,slug,preco_mensal)')
+      .eq('usuario_id',user.id)
+      .order('criado_em',{ascending:false})
+      .limit(1).maybeSingle();
+    if(error) throw error;
+    if(!sub){
+      statusEl.innerHTML = `<div class="rounded-xl border border-bf-border bg-bf-bg p-4 text-sm text-bf-secondary">
+        Você ainda não possui uma assinatura. <button onclick="document.getElementById('landing').scrollIntoView({behavior:'smooth'})" class="text-orange-400 font-semibold">Escolher plano</button>
+      </div>`;
+      histEl.innerHTML = '';
+      return;
+    }
+    const [label,txt,bg,border] = statusAssinaturaLabel(sub.status);
+    const planoNome = sub.planos?.nome || 'Boostflow';
+    const preco = sub.planos?.preco_mensal;
+    statusEl.innerHTML = `<div class="rounded-xl border ${border} ${bg} p-4">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div><div class="text-xs text-bf-tertiary">Status da assinatura</div><div class="font-semibold ${txt}">${label}</div></div>
+        <span class="text-xs px-2.5 py-1 rounded-full border ${border} ${txt}">${esc(planoNome)}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-3 text-xs">
+        <div><div class="text-bf-tertiary">Valor</div><div class="font-semibold text-sm">${preco ? moedaBR(preco)+'/mês' : '—'}</div></div>
+        <div><div class="text-bf-tertiary">Próximo vencimento</div><div class="font-semibold text-sm">${dataBR(sub.current_period_end)}</div></div>
+      </div>
+    </div>`;
+    const {data:payments} = await sb.from('pagamentos')
+      .select('valor,status,vencimento,pago_em,external_payment_id')
+      .eq('assinatura_id',sub.id)
+      .order('vencimento',{ascending:false})
+      .limit(8);
+    histEl.innerHTML = `<div class="border-t border-bf-border pt-5">
+      <div class="flex items-center justify-between mb-3"><h4 class="font-semibold text-sm">Histórico de pagamentos</h4><span class="text-[11px] text-bf-tertiary">${payments?.length||0} registros</span></div>
+      ${(payments||[]).length ? payments.map(p=>{
+        const [pl,pt,pbg,pborder]=statusAssinaturaLabel(p.status==='paid'?'active':p.status==='overdue'?'overdue':'pending');
+        return `<div class="flex items-center justify-between gap-3 py-2.5 border-b border-bf-border/60 last:border-0">
+          <div><div class="text-sm font-medium">${p.valor ? moedaBR(p.valor) : '—'}</div><div class="text-[11px] text-bf-tertiary">Vencimento: ${dataBR(p.vencimento)}</div></div>
+          <span class="text-[11px] px-2 py-1 rounded-full border ${pborder} ${pt}">${pl}</span>
+        </div>`;
+      }).join('') : '<p class="text-sm text-bf-tertiary">Os pagamentos aparecerão aqui após o primeiro evento do Asaas.</p>'}
+    </div>`;
+  }catch(err){
+    console.error(err);
+    statusEl.innerHTML = '<div class="text-sm text-red-400">Não foi possível carregar sua assinatura agora.</div>';
+  }
+}
+
+function processarRetornoPagamento(){
+  const path = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+  let tipo = path.match(/\/pagamento\/(sucesso|cancelado|expirado)/)?.[1] || params.get('pagamento');
+  if(!['sucesso','cancelado','expirado'].includes(tipo)) return;
+  const mensagens = {
+    sucesso:['Pagamento iniciado com sucesso. A confirmação final será atualizada automaticamente.','success'],
+    cancelado:['Checkout cancelado. Você pode tentar novamente quando quiser.','info'],
+    expirado:['O checkout expirou. Escolha o plano novamente para gerar um novo pagamento.','error']
+  };
+  setTimeout(()=>toast(mensagens[tipo]?.[0] || 'Retorno do pagamento processado.',mensagens[tipo]?.[1] || 'info'),300);
+  history.replaceState({},'',APP_URL+'/');
+}
+
+async function finalizarCheckoutPendente(){
+  const plan = sessionStorage.getItem('boostflow_checkout_plan');
+  if(!plan) return;
+  const {data:{session}} = await sb.auth.getSession();
+  if(session){
+    sessionStorage.removeItem('boostflow_checkout_plan');
+    await executarCheckout(plan);
+  }
+}
+
+/* ======================= DASHBOARD ======================= */
+
+function renderDashboard(){
+  document.getElementById('dashGreeting').textContent = saudacao();
+  const total = db.leads.length;
+  const pendentes = db.followups.filter(f=>!f.enviado).length;
+  const novos = db.leads.filter(l=>l.status==='Novo').length;
+  const emConversa = db.leads.filter(l=>l.status==='Em_conversa').length;
+  const fechados = db.leads.filter(l=>l.status==='Fechado').length;
+  const conversao = total ? Math.round((fechados/total)*100) : 0;
+  const quentes = db.leads.filter(l=>l.status==='Proposta'||l.status==='Em_conversa').length;
+
+  document.getElementById('dashStats').innerHTML = `
+    <div class="bf-card p-4">
+      <div class="text-[11px] text-bf-tertiary mb-1">Leads ativos</div>
+      <div class="text-2xl font-bold">${total}</div>
+      <div class="text-[11px] text-bf-tertiary mt-1">${novos} novos</div>
+    </div>
+    <div class="bf-card p-4">
+      <div class="text-[11px] text-bf-tertiary mb-1">Leads quentes</div>
+      <div class="text-2xl font-bold text-orange-400">${quentes}</div>
+      <div class="text-[11px] text-bf-tertiary mt-1">Em conversa / proposta</div>
+    </div>
+    <div class="bf-card p-4">
+      <div class="text-[11px] text-bf-tertiary mb-1">Taxa de conversão</div>
+      <div class="text-2xl font-bold text-green-400">${conversao}%</div>
+      <div class="text-[11px] text-bf-tertiary mt-1">${fechados} fechados</div>
+    </div>
+    <div class="bf-card p-4">
+      <div class="text-[11px] text-bf-tertiary mb-1">Follow-ups</div>
+      <div class="text-2xl font-bold text-yellow-400">${pendentes}</div>
+      <div class="text-[11px] text-bf-tertiary mt-1">Pendentes</div>
+    </div>
+    <div class="bf-card p-4 col-span-2 lg:col-span-1">
+      <div class="text-[11px] text-bf-tertiary mb-1">Em conversa</div>
+      <div class="text-2xl font-bold">${emConversa}</div>
+      <div class="text-[11px] text-bf-tertiary mt-1">Ativos agora</div>
+    </div>
+  `;
+
+  // Funnel
+  const funnelStatuses = [
+    {key:'Novo', label:'Novo'},
+    {key:'Em_conversa', label:'Contato'},
+    {key:'Proposta', label:'Proposta'},
+    {key:'Fechado', label:'Fechado'},
+    {key:'Perdido', label:'Perdido'}
+  ];
+  document.getElementById('dashFunnel').innerHTML = funnelStatuses.map((s,i)=>{
+    const count = db.leads.filter(l=>l.status===s.key).length;
+    return `<div class="funnel-step min-w-[80px]">
+      <div class="text-2xl font-bold ${s.key==='Fechado'?'text-green-400':s.key==='Perdido'?'text-red-400':'text-bf-text'}">${count}</div>
+      <div class="text-[11px] text-bf-tertiary mt-1">${s.label}</div>
+    </div>`;
+  }).join('');
+
+  // Chart
+  renderChart();
+
+  // AI insight
+  const insight = quentes > 0
+    ? `Você possui ${quentes} lead${quentes>1?'s':''} com alta probabilidade de fechamento (em conversa ou proposta).`
+    : total > 0
+      ? `Você tem ${total} lead${total>1?'s':''}. Foque em mover os novos para conversa.`
+      : 'Cadastre seu primeiro lead para começar a receber insights.';
+  document.getElementById('aiInsightText').textContent = insight;
+
+  // Próximos
+  const prox = db.followups.filter(f=>!f.enviado).sort((a,b)=>a.dueEm-b.dueEm).slice(0,5);
+  document.getElementById('dashProximos').innerHTML = prox.length ? prox.map(f=>{
+    const lead = db.leads.find(l=>l.id===f.leadId);
+    const atrasado = f.dueEm < Date.now();
+    return `<div class="flex justify-between items-center">
+      <div class="min-w-0">
+        <div class="font-medium text-sm truncate">${esc(lead ? lead.nome : '—')}</div>
+        <div class="text-[11px] ${atrasado?'text-red-400':'text-bf-tertiary'}">${fmtData(f.dueEm)}${atrasado?' · atrasado':''}</div>
+      </div>
+      <span class="text-[10px] px-2 py-0.5 rounded-full ${atrasado?'bg-red-500/15 text-red-400':'bg-orange-500/15 text-orange-400'} font-semibold">${atrasado?'Atrasado':'Pendente'}</span>
+    </div>`;
+  }).join('') : `<p class="text-sm text-bf-tertiary">Nenhum follow-up agendado.</p>`;
+}
+
+function setChartPeriod(days){
+  chartPeriod = days;
+  document.querySelectorAll('.chart-period').forEach(b=>{
+    const active = Number(b.dataset.p)===days;
+    b.className = active
+      ? 'chart-period text-[11px] px-2.5 py-1 rounded-md bg-orange-500/15 text-orange-400 font-medium'
+      : 'chart-period text-[11px] px-2.5 py-1 rounded-md text-bf-tertiary hover:text-bf-secondary font-medium';
+  });
+  renderChart();
+}
+
+function renderChart(){
+  const el = document.getElementById('dashChart');
+  if(!el) return;
+  const days = chartPeriod;
+  const now = new Date();
+  const buckets = [];
+  for(let i=days-1; i>=0; i--){
+    const d = new Date(now); d.setDate(d.getDate()-i); d.setHours(0,0,0,0);
+    buckets.push({ date: d.getTime(), count: 0 });
+  }
+  db.leads.forEach(l=>{
+    const day = new Date(l.criadoEm); day.setHours(0,0,0,0);
+    const b = buckets.find(x=>x.date===day.getTime());
+    if(b) b.count++;
+  });
+  const max = Math.max(1, ...buckets.map(b=>b.count));
+  const step = days > 30 ? Math.ceil(days/15) : 1;
+  el.innerHTML = buckets.map((b,i)=>{
+    if(i % step !== 0 && i !== buckets.length-1) return '';
+    const h = Math.max(4, Math.round((b.count/max)*100));
+    return `<div class="flex-1 flex flex-col items-center gap-1 min-w-0">
+      <div class="chart-bar w-full" style="height:${h}%"></div>
+    </div>`;
+  }).join('');
+}
+
+/* ======================= CRM ======================= */
+function setFiltroLead(f){
+  filtroLead = f;
+  document.querySelectorAll('.filtro-lead').forEach(b=>{
+    const active = b.dataset.f === f;
+    b.className = active
+      ? 'filtro-lead text-xs px-3 py-2 rounded-lg border border-orange-500/40 bg-orange-500/10 text-orange-400 font-semibold whitespace-nowrap'
+      : 'filtro-lead text-xs px-3 py-2 rounded-lg border border-bf-border font-medium whitespace-nowrap text-bf-secondary';
+  });
+  renderClientes();
+}
+function setCrmView(v){
+  crmView = v;
+  document.getElementById('viewLista').className = v==='lista' ? 'btn-icon !w-8 !h-8 !rounded-md bg-orange-500/15 text-orange-400' : 'btn-icon !w-8 !h-8 !rounded-md';
+  document.getElementById('viewKanban').className = v==='kanban' ? 'btn-icon !w-8 !h-8 !rounded-md bg-orange-500/15 text-orange-400' : 'btn-icon !w-8 !h-8 !rounded-md';
+  document.getElementById('listaClientes').classList.toggle('hidden', v!=='lista');
+  document.getElementById('kanbanClientes').classList.toggle('hidden', v!=='kanban');
+  renderClientes();
+}
+
+function getLeadsFiltrados(){
+  let arr = [...db.leads];
+  if(filtroLead !== 'todos') arr = arr.filter(l=>l.status===filtroLead);
+  const busca = (document.getElementById('buscaLeads')?.value || '').trim().toLowerCase();
+  if(busca) arr = arr.filter(l=>`${l.nome} ${l.telefone} ${l.origem||''}`.toLowerCase().includes(busca));
+  return arr;
+}
+
+function renderClientes(){
+  const leads = getLeadsFiltrados();
+  if(crmView === 'kanban'){
+    renderKanban(leads);
+    return;
+  }
+  const el = document.getElementById('listaClientes');
+  if(!leads.length){
+    el.innerHTML = `<div class="empty-state">
+      <i class="fas fa-users"></i>
+      <div class="font-medium text-bf-secondary mb-1">Nenhum lead encontrado</div>
+      <p class="text-sm mb-4">Cadastre seu primeiro lead para começar.</p>
+      <button onclick="abrirLeadModal()" class="btn-primary text-sm"><i class="fas fa-plus text-xs"></i> Adicionar primeiro lead</button>
+    </div>`;
+    return;
+  }
+  el.innerHTML = `<div class="space-y-2">${leads.map(l=>{
+    const fw = db.followups.filter(f=>f.leadId===l.id && !f.enviado).sort((a,b)=>a.dueEm-b.dueEm)[0];
+    return `<div class="bf-card p-4 hover:border-bf-muted transition cursor-pointer" onclick="abrirLeadModal('${l.id}')">
+      <div class="flex justify-between items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-semibold truncate">${esc(l.nome)}</span>
+            <span class="status-pill status-${l.status}">${statusLabel(l.status)}</span>
+          </div>
+          <div class="text-sm text-bf-tertiary mt-1">${esc(l.telefone)}${l.origem?' · '+esc(l.origem):''}</div>
+          ${l.notas?`<p class="text-xs text-bf-tertiary mt-1.5 line-clamp-1">${esc(l.notas)}</p>`:''}
+          ${fw?`<div class="text-[11px] text-orange-400 mt-1.5"><i class="fas fa-clock mr-1"></i>Próximo FU: ${fmtData(fw.dueEm)}</div>`:''}
+        </div>
+        <div class="flex gap-1 shrink-0" onclick="event.stopPropagation()">
+          <a href="${waHref(l.telefone,'')}" target="_blank" class="btn-icon text-green-500" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+          <button onclick="abrirLeadModal('${l.id}')" class="btn-icon" title="Editar"><i class="fas fa-pen text-xs"></i></button>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderKanban(leads){
+  const el = document.getElementById('kanbanClientes');
+  const cols = STATUS_ORDER;
+  el.innerHTML = `<div class="flex gap-3 min-w-max">${cols.map(st=>{
+    const items = leads.filter(l=>l.status===st);
+    return `<div class="kanban-col p-3">
+      <div class="flex items-center justify-between mb-3 px-1">
+        <span class="text-xs font-semibold text-bf-secondary uppercase tracking-wide">${statusLabel(st)}</span>
+        <span class="text-[11px] text-bf-tertiary bg-bf-bg px-2 py-0.5 rounded-full">${items.length}</span>
+      </div>
+      <div class="space-y-2 max-h-[60vh] overflow-y-auto">
+        ${items.map(l=>`<div class="kanban-card" onclick="abrirLeadModal('${l.id}')">
+          <div class="font-medium text-sm mb-1 truncate">${esc(l.nome)}</div>
+          <div class="text-[11px] text-bf-tertiary truncate">${esc(l.telefone)}</div>
+          ${l.origem?`<div class="text-[10px] text-bf-tertiary mt-1">${esc(l.origem)}</div>`:''}
+        </div>`).join('') || `<div class="text-[11px] text-bf-tertiary text-center py-4">Vazio</div>`}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function abrirLeadModal(id){
+  const modal = document.getElementById('leadModal');
+  document.getElementById('leadId').value = id || '';
+  if(id){
+    const l = db.leads.find(x=>x.id===id);
+    if(!l) return;
+    document.getElementById('leadModalTitulo').textContent = 'Editar lead';
+    document.getElementById('leadNome').value = l.nome;
+    document.getElementById('leadTelefone').value = l.telefone;
+    document.getElementById('leadOrigem').value = l.origem||'';
+    document.getElementById('leadStatus').value = l.status;
+    document.getElementById('leadNotas').value = l.notas||'';
+    document.getElementById('btnExcluirLead').classList.remove('hidden');
+  } else {
+    document.getElementById('leadModalTitulo').textContent = 'Novo lead';
+    ['leadNome','leadTelefone','leadOrigem','leadNotas'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('leadStatus').value = 'Novo';
+    document.getElementById('btnExcluirLead').classList.add('hidden');
+  }
+  modal.showModal();
+}
+async function salvarLead(e){
+  e.preventDefault();
+  const id = document.getElementById('leadId').value;
+  const statusAntigo = id ? db.leads.find(l=>l.id==id)?.status : null;
+  const dados = {
+    nome: document.getElementById('leadNome').value.trim(),
+    telefone: normalizarTelefoneBR(document.getElementById('leadTelefone').value),
+    origem: document.getElementById('leadOrigem').value.trim(),
+    status: document.getElementById('leadStatus').value,
+    notas: document.getElementById('leadNotas').value.trim(),
+  };
+  const { data: { user } } = await sb.auth.getUser();
+  if(id){
+    await sb.from('leads').update(dados).eq('id', id);
+    if(statusAntigo !== dados.status) await dispararAutomacao({id, ...dados});
+    toast('Lead atualizado','success');
+  } else {
+    const { data: novo } = await sb.from('leads').insert({ user_id: user.id, ...dados }).select().single();
+    if(novo) await dispararAutomacao({id: novo.id, ...dados});
+    toast('Lead criado','success');
+  }
+  await carregarTudo();
+  fecharModal('leadModal');
+  renderClientes(); renderDashboard(); renderFollowups();
+}
+async function excluirLeadAtual(){
+  const id = document.getElementById('leadId').value;
+  if(!id) return;
+  if(!confirm('Excluir este lead? Os follow-ups associados também serão removidos.')) return;
+  await sb.from('leads').delete().eq('id', id);
+  await carregarTudo();
+  fecharModal('leadModal');
+  toast('Lead excluído','success');
+  renderClientes(); renderDashboard(); renderFollowups();
+}
+
+/* ======================= FOLLOW-UPS ======================= */
+function renderFollowups(){
+  const pendentes = db.followups.filter(f=>!f.enviado);
+  const agora = Date.now();
+  const inicioHoje = new Date(); inicioHoje.setHours(0,0,0,0);
+  const fimHoje = new Date(); fimHoje.setHours(23,59,59,999);
+  const atrasados = pendentes.filter(f=>f.dueEm < inicioHoje.getTime());
+  const hoje = pendentes.filter(f=>f.dueEm >= inicioHoje.getTime() && f.dueEm <= fimHoje.getTime());
+  const proximos = pendentes.filter(f=>f.dueEm > fimHoje.getTime());
+  const concluidos = db.followups.filter(f=>f.enviado).length;
+
+  document.getElementById('fwStats').innerHTML = `
+    <div class="bf-card p-3.5 text-center"><div class="text-xl font-bold text-red-400">${atrasados.length}</div><div class="text-[11px] text-bf-tertiary">Atrasados</div></div>
+    <div class="bf-card p-3.5 text-center"><div class="text-xl font-bold text-orange-400">${hoje.length}</div><div class="text-[11px] text-bf-tertiary">Hoje</div></div>
+    <div class="bf-card p-3.5 text-center"><div class="text-xl font-bold text-yellow-400">${proximos.length}</div><div class="text-[11px] text-bf-tertiary">Próximos</div></div>
+    <div class="bf-card p-3.5 text-center"><div class="text-xl font-bold text-green-400">${concluidos}</div><div class="text-[11px] text-bf-tertiary">Concluídos</div></div>
+  `;
+
+  const sorted = [...pendentes].sort((a,b)=>a.dueEm-b.dueEm);
+  const evoOk = evoConfigurada();
+  const lista = document.getElementById('listaFollowups');
+  if(!sorted.length){
+    lista.innerHTML = `<div class="empty-state"><i class="fas fa-clock-rotate-left"></i><div class="font-medium text-bf-secondary">Nenhum follow-up pendente</div><p class="text-sm">Eles aparecem quando o status de um lead ativa uma automação.</p></div>`;
+    return;
+  }
+  let html = '';
+  if(!evoOk){
+    html += `<div class="bf-card p-3 mb-2 border-yellow-500/20 bg-yellow-500/5 text-yellow-300/90 text-xs">⚠️ Envio automático não configurado. Configure a Evolution API em Configurações para enviar direto.</div>`;
+  }
+  html += sorted.map(f=>{
+    const lead = db.leads.find(l=>l.id===f.leadId);
+    if(!lead) return '';
+    const msg = f.mensagem.replace('{nome}', lead.nome);
+    const atrasado = f.dueEm < agora;
+    const botao = evoOk
+      ? `<button onclick="enviarFollowupAgora('${f.id}', this)" class="btn-primary text-xs py-1.5 px-3"><i class="fas fa-bolt text-[10px]"></i> Enviar agora</button>`
+      : `<a href="${waHref(lead.telefone, msg)}" target="_blank" onclick="marcarEnviado('${f.id}')" class="btn-primary text-xs py-1.5 px-3">Enviar (manual)</a>`;
+    return `<div class="bf-card p-4" id="followup-${f.id}">
+      <div class="flex justify-between items-start gap-3">
+        <div class="min-w-0 flex-1">
+          <div class="font-semibold text-sm">${esc(lead.nome)}</div>
+          <div class="text-sm text-bf-secondary mt-1 leading-relaxed">${esc(msg)}</div>
+          <div class="text-[11px] mt-2 ${atrasado?'text-red-400':'text-bf-tertiary'}">${fmtData(f.dueEm)}${atrasado?' · atrasado':''}</div>
+        </div>
+      </div>
+      <div class="mt-3">${botao}</div>
+    </div>`;
+  }).join('');
+  lista.innerHTML = html;
+}
+async function marcarEnviado(id){
+  await sb.from('followups').update({ enviado: true }).eq('id', id);
+  const f = db.followups.find(x=>x.id===id);
+  if(f) f.enviado = true;
+  setTimeout(()=>{renderFollowups(); renderDashboard();}, 300);
+}
+async function enviarFollowupAgora(id, btnEl){
+  const f = db.followups.find(x=>x.id===id);
+  if(!f) return;
+  const lead = db.leads.find(l=>l.id===f.leadId);
+  if(!lead) return;
+  const msg = f.mensagem.replace('{nome}', lead.nome);
+  const original = btnEl.innerHTML;
+  btnEl.disabled = true;
+  btnEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+  const resultado = await enviarViaEvolution(lead.telefone, msg);
+  if(resultado.ok){
+    await sb.from('followups').update({ enviado: true }).eq('id', id);
+    f.enviado = true;
+    toast('Mensagem enviada','success');
+    renderFollowups(); renderDashboard();
+  } else {
+    btnEl.disabled = false;
+    btnEl.innerHTML = original;
+    toast('Falha no envio: '+resultado.motivo,'error');
+  }
+}
+
+/* ======================= SEQUÊNCIAS ======================= */
+function renderSequencias(){
+  const el = document.getElementById('listaSequencias');
+  if(!db.sequencias.length){
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-list-ol"></i><div class="font-medium text-bf-secondary">Nenhuma sequência</div></div>`;
+    return;
+  }
+  el.innerHTML = db.sequencias.map(s=>`
+    <div class="bf-card p-4 cursor-pointer hover:border-bf-muted" onclick="abrirSeqModal('${s.id}')">
+      <div class="font-semibold">${esc(s.nome)}</div>
+      <div class="text-sm text-bf-tertiary mt-0.5">${esc(s.descricao||'')} · ${s.passos.length} mensagem(ns)</div>
+    </div>
+  `).join('');
+}
+let passosTemp = [];
+function adicionarPasso(dias=1, mensagem=''){
+  passosTemp.push({dias, mensagem});
+  renderPassosTemp();
+}
+function removerPasso(idx){ passosTemp.splice(idx,1); renderPassosTemp(); }
+function renderPassosTemp(){
+  document.getElementById('passosSequencia').innerHTML = passosTemp.map((p,idx)=>`
+    <div class="border border-bf-border rounded-lg p-2.5 flex gap-2 items-start bg-bf-bg">
+      <div class="w-20">
+        <label class="text-[10px] text-bf-tertiary">Dias</label>
+        <input type="number" min="0" value="${p.dias}" onchange="passosTemp[${idx}].dias=Number(this.value)" class="bf-input !py-1.5 !text-xs">
+      </div>
+      <div class="flex-1">
+        <label class="text-[10px] text-bf-tertiary">Mensagem (use {nome})</label>
+        <textarea rows="2" onchange="passosTemp[${idx}].mensagem=this.value" class="bf-input !py-1.5 !text-xs">${esc(p.mensagem)}</textarea>
+      </div>
+      <button type="button" onclick="removerPasso(${idx})" class="text-red-400 text-xs mt-5 hover:text-red-300">✕</button>
+    </div>
+  `).join('');
+}
+function abrirSeqModal(id){
+  document.getElementById('seqId').value = id || '';
+  if(id){
+    const s = db.sequencias.find(x=>x.id===id);
+    document.getElementById('seqModalTitulo').textContent = 'Editar sequência';
+    document.getElementById('seqNome').value = s.nome;
+    document.getElementById('seqDescricao').value = s.descricao||'';
+    passosTemp = structuredClone(s.passos);
+    document.getElementById('btnExcluirSeq').classList.remove('hidden');
+  } else {
+    document.getElementById('seqModalTitulo').textContent = 'Nova sequência';
+    document.getElementById('seqNome').value = '';
+    document.getElementById('seqDescricao').value = '';
+    passosTemp = [{dias:1, mensagem:'Oi {nome}! '}];
+    document.getElementById('btnExcluirSeq').classList.add('hidden');
+  }
+  renderPassosTemp();
+  document.getElementById('seqModal').showModal();
+}
+async function salvarSequencia(e){
+  e.preventDefault();
+  const id = document.getElementById('seqId').value;
+  const dados = {
+    nome: document.getElementById('seqNome').value.trim(),
+    descricao: document.getElementById('seqDescricao').value.trim(),
+    passos: structuredClone(passosTemp)
+  };
+  if(id){
+    await sb.from('sequencias').update(dados).eq('id', id);
+    toast('Sequência atualizada','success');
+  } else {
+    const { data: { user } } = await sb.auth.getUser();
+    await sb.from('sequencias').insert({ user_id: user.id, ...dados });
+    toast('Sequência criada','success');
+  }
+  await carregarTudo();
+  fecharModal('seqModal');
+  renderSequencias(); renderAutomacoes();
+}
+async function excluirSeqAtual(){
+  const id = document.getElementById('seqId').value;
+  if(!id) return;
+  if(!confirm('Excluir esta sequência? Automações que a usam serão desativadas.')) return;
+  await sb.from('automacoes').update({ ativo: false }).eq('sequencia_id', id);
+  await sb.from('sequencias').delete().eq('id', id);
+  await carregarTudo();
+  fecharModal('seqModal');
+  toast('Sequência excluída','success');
+  renderSequencias(); renderAutomacoes();
+}
+
+/* ======================= AUTOMAÇÕES ======================= */
+function renderAutomacoes(){
+  const el = document.getElementById('listaAutomacoes');
+  if(!db.automacoes.length){
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-bolt"></i><div class="font-medium text-bf-secondary">Nenhuma automação</div></div>`;
+    return;
+  }
+  el.innerHTML = db.automacoes.map(a=>{
+    const seq = db.sequencias.find(s=>s.id===a.sequenciaId);
+    return `<div class="bf-card p-4 flex justify-between items-center gap-3">
+      <div class="flex-1 min-w-0">
+        <div class="font-medium text-sm">Status = <span class="text-orange-400">${statusLabel(a.gatilhoStatus)}</span></div>
+        <select onchange="mudarSeqAutomacao('${a.id}', this.value)" class="bf-input !py-1.5 !text-xs mt-2 max-w-xs">
+          ${db.sequencias.map(s=>`<option value="${s.id}" ${s.id===a.sequenciaId?'selected':''}>→ ${esc(s.nome)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] font-semibold ${a.ativo?'text-green-400':'text-bf-tertiary'}">${a.ativo?'ATIVA':'PAUSADA'}</span>
+        <input type="checkbox" ${a.ativo?'checked':''} onchange="toggleAutomacao('${a.id}', this.checked)" class="w-5 h-5 accent-orange-500">
+      </div>
+    </div>`;
+  }).join('');
+}
+async function toggleAutomacao(id, ativo){
+  await sb.from('automacoes').update({ ativo }).eq('id', id);
+  const a = db.automacoes.find(x=>x.id===id);
+  if(a) a.ativo = ativo;
+  renderAutomacoes();
+}
+async function mudarSeqAutomacao(id, seqId){
+  await sb.from('automacoes').update({ sequencia_id: seqId }).eq('id', id);
+  const a = db.automacoes.find(x=>x.id===id);
+  if(a) a.sequenciaId = seqId;
+}
+async function dispararAutomacao(lead){
+  const auto = db.automacoes.find(a=>a.ativo && a.gatilhoStatus===lead.status);
+  if(!auto) return;
+  const seq = db.sequencias.find(s=>s.id===auto.sequenciaId);
+  if(!seq) return;
+  const { data: { user } } = await sb.auth.getUser();
+  const agora = Date.now();
+  const novosFollowups = seq.passos.map(p=>({
+    user_id: user.id,
+    lead_id: lead.id,
+    sequencia_id: seq.id,
+    mensagem: p.mensagem,
+    due_em: new Date(agora + p.dias*24*60*60*1000).toISOString(),
+    enviado: false
+  }));
+  await sb.from('followups').insert(novosFollowups);
+}
+
+/* ======================= CONVERSAS ======================= */
+function normalizarMensagem(r){
+  const ts = r.created_at || r.criado_em || r.createdAt || r.data || r.timestamp || new Date().toISOString();
+  return {
+    id: r.id,
+    leadId: r.lead_id || r.leadId || null,
+    telefone: r.telefone || r.phone || r.numero || r.remote_jid || r.from || '',
+    texto: r.mensagem || r.message || r.texto || r.text || r.conteudo || r.body || '',
+    direcao: r.from_me === true ? 'saida' : (r.direcao || r.direction || r.tipo || 'entrada'),
+    lida: r.lida ?? r.read ?? false,
+    criadoEm: new Date(ts).getTime()
+  };
+}
+async function carregarMensagens(){
+  const {data, error} = await sb.from('mensagens').select('*').limit(200);
+  if(error){
+    document.getElementById('listaConversas').innerHTML = `<div class="bf-card p-4 text-sm text-red-400">Não consegui carregar as mensagens. Confira a tabela mensagens e as policies RLS.</div>`;
+    return;
+  }
+  db.mensagens = (data||[]).map(normalizarMensagem).sort((a,b)=>b.criadoEm-a.criadoEm);
+  renderConversas();
+  toast('Conversas atualizadas','success');
+}
+function setFiltroConversas(filtro){
+  filtroConversas = filtro;
+  document.getElementById('filtroTodos').className = filtro==='todos'
+    ? 'text-xs px-3 py-1.5 rounded-full border border-orange-500/40 bg-orange-500/10 text-orange-400 font-semibold'
+    : 'text-xs px-3 py-1.5 rounded-full border border-bf-border text-bf-secondary font-medium';
+  document.getElementById('filtroNaoLidas').className = filtro==='nao_lidas'
+    ? 'text-xs px-3 py-1.5 rounded-full border border-orange-500/40 bg-orange-500/10 text-orange-400 font-semibold'
+    : 'text-xs px-3 py-1.5 rounded-full border border-bf-border text-bf-secondary font-medium';
+  renderConversas();
+}
+function avatarNome(nome, telefone){
+  const base = (nome && nome.trim()) || telefone || '?';
+  const partes = base.trim().split(/\s+/).filter(Boolean);
+  return esc((partes.length>1 ? partes[0][0]+partes[partes.length-1][0] : base.slice(0,2)).toUpperCase());
+}
+function renderConversas(){
+  const lista = document.getElementById('listaConversas');
+  if(!lista) return;
+  const busca = (document.getElementById('buscaConversas')?.value || '').trim().toLowerCase();
+  const grupos = new Map();
+  [...(db.mensagens||[])].sort((a,b)=>b.criadoEm-a.criadoEm).forEach(m=>{
+    const lead = db.leads.find(l=>l.id===m.leadId) || db.leads.find(l=>normalizarTelefoneBR(l.telefone)===normalizarTelefoneBR(m.telefone));
+    const key = m.leadId || normalizarTelefoneBR(m.telefone) || m.id;
+    if(!grupos.has(key)) grupos.set(key,{lead,mensagens:[]});
+    grupos.get(key).mensagens.push(m);
+  });
+  let arr=[...grupos.values()].map(g=>{
+    const ultima=g.mensagens[0];
+    const naoLidas=g.mensagens.filter(m=>!m.lida && m.direcao!=='saida').length;
+    return {...g,ultima,naoLidas};
+  });
+  if(filtroConversas==='nao_lidas') arr=arr.filter(g=>g.naoLidas>0);
+  if(busca) arr=arr.filter(g=>{
+    const nome=g.lead?.nome||''; const tel=g.lead?.telefone||g.ultima.telefone||'';
+    return `${nome} ${tel} ${g.ultima.texto}`.toLowerCase().includes(busca);
+  });
+  const totalGrupos=[...grupos.values()];
+  const totalNaoLidas=totalGrupos.reduce((s,g)=>s+g.mensagens.filter(m=>!m.lida&&m.direcao!=='saida').length,0);
+  const inicioHoje=new Date(); inicioHoje.setHours(0,0,0,0);
+  const hoje=(db.mensagens||[]).filter(m=>m.criadoEm>=inicioHoje.getTime()).length;
+  const setText=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v};
+  setText('waTotalConversas',totalGrupos.length); setText('waNaoLidas',totalNaoLidas); setText('waHoje',hoje);
+  setText('filtroTodosCount',totalGrupos.length); setText('filtroNaoLidasCount',totalNaoLidas);
+
+  lista.innerHTML = arr.map(g=>{
+    const ultima=g.ultima;
+    const nome=g.lead?.nome || ultima.telefone || 'Contato sem nome';
+    const telefone=g.lead?.telefone || ultima.telefone || '';
+    const texto=ultima.texto || '(mensagem sem texto)';
+    const horario=ultima.criadoEm ? new Date(ultima.criadoEm).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
+    return `<div class="bf-card p-3.5 flex gap-3 items-center cursor-pointer hover:border-orange-500/40 transition" onclick="abrirConversaWhats('${esc(telefone)}')">
+      <div class="w-11 h-11 rounded-full bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white text-xs font-bold shrink-0">${avatarNome(nome,telefone)}</div>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="font-semibold text-sm truncate">${esc(nome)}</span>
+            ${g.lead?'<span class="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-bold">LEAD</span>':''}
+          </div>
+          <span class="text-[11px] text-bf-tertiary whitespace-nowrap">${horario}</span>
+        </div>
+        <div class="text-[11px] text-bf-tertiary truncate">${esc(telefone)}</div>
+        <div class="flex items-center justify-between gap-2 mt-0.5">
+          <div class="text-xs text-bf-secondary truncate">${ultima.direcao==='saida'?'Você: ':''}${esc(texto)}</div>
+          ${g.naoLidas?`<span class="min-w-[20px] h-5 px-1.5 rounded-full bg-orange-500 text-black text-[10px] font-bold flex items-center justify-center">${g.naoLidas}</span>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || `<div class="empty-state"><i class="fab fa-whatsapp"></i><div class="font-medium text-bf-secondary">Nenhuma conversa</div><p class="text-sm">Quando uma mensagem chegar, ela aparecerá aqui.</p></div>`;
+
+  const badge=document.getElementById('badgeConversas');
+  if(badge){ badge.textContent=String(totalNaoLidas||totalGrupos.length); badge.classList.toggle('hidden', totalGrupos.length===0); }
+}
+async function abrirConversaWhats(telefone){
+  toast('A janela de conversa foi removida.', 'success');
+  return;
+  if(!telefone) return;
+  const numero=normalizarTelefoneBR(telefone);
+  const lead=db.leads.find(l=>normalizarTelefoneBR(l.telefone)===numero);
+  const pendentes=(db.mensagens||[]).filter(m=>!m.lida && m.direcao!=='saida' && (m.leadId===lead?.id || normalizarTelefoneBR(m.telefone)===numero));
+  if(pendentes.length){
+    pendentes.forEach(m=>m.lida=true);
+    renderConversas();
+    for(const m of pendentes){
+      try{ await sb.from('mensagens').update({lida:true}).eq('id',m.id); }catch(e){}
+    }
+  }
+  abrirChatCRM(telefone);
+}
+function obterMensagensConversa(telefone){
+  const numero=normalizarTelefoneBR(telefone);
+  const lead=db.leads.find(l=>normalizarTelefoneBR(l.telefone)===numero);
+  return (db.mensagens||[]).filter(m=>m.leadId===lead?.id || normalizarTelefoneBR(m.telefone)===numero)
+    .sort((a,b)=>a.criadoEm-b.criadoEm);
+}
+function renderChatCRM(){
+  const body=document.getElementById('waChatBody');
+  if(!body || !window.waChatTelefone) return;
+  const msgs=obterMensagensConversa(window.waChatTelefone);
+  body.innerHTML=msgs.map(m=>`<div class="${m.direcao==='saida'?'wa-bubble-out':'wa-bubble-in'}">
+    <div>${esc(m.texto||'(mensagem sem texto)')}</div>
+    <span class="block text-right text-[10px] opacity-50 mt-1">${m.criadoEm?new Date(m.criadoEm).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</span>
+  </div>`).join('') || `<div class="text-center text-bf-tertiary text-sm mt-10">Nenhuma mensagem nesta conversa.</div>`;
+  requestAnimationFrame(()=>{ body.scrollTop=body.scrollHeight; });
+}
+function abrirChatCRM(telefone){
+  const numero=normalizarTelefoneBR(telefone);
+  const lead=db.leads.find(l=>normalizarTelefoneBR(l.telefone)===numero);
+  window.waChatTelefone=telefone;
+  const nome=lead?.nome || telefone;
+  document.getElementById('waChatAvatar').innerHTML=avatarNome(nome,telefone);
+  document.getElementById('waChatNome').textContent=nome;
+  document.getElementById('waChatTelefone').textContent=telefone;
+  renderChatCRM();
+  const modal=document.getElementById('waChatModal');
+  if(modal && !modal.open) modal.showModal();
+  setTimeout(()=>document.getElementById('waChatInput')?.focus(),120);
+}
+async function enviarMensagemCRM(){
+  const input=document.getElementById('waChatInput');
+  const btn=document.getElementById('waChatSend');
+  if(!input || !window.waChatTelefone) return;
+  const mensagem=input.value.trim();
+  if(!mensagem) return;
+  if(!evoConfigurada()){
+    toast('Configure a Evolution API em Configurações','error');
+    return;
+  }
+  btn.disabled=true; input.disabled=true;
+  try{
+    const resultado=await enviarViaEvolution(window.waChatTelefone,mensagem);
+    if(!resultado.ok){ toast('Não foi possível enviar','error'); return; }
+    const lead=db.leads.find(l=>normalizarTelefoneBR(l.telefone)===normalizarTelefoneBR(window.waChatTelefone));
+    const {data:{user}}=await sb.auth.getUser();
+    const payload={
+      user_id:user?.id, lead_id:lead?.id||null,
+      telefone:normalizarTelefoneBR(window.waChatTelefone),
+      mensagem, direcao:'saida', from_me:true, lida:true,
+      created_at:new Date().toISOString()
+    };
+    const {data,error}=await sb.from('mensagens').insert(payload).select().single();
+    if(error){ db.mensagens.push(normalizarMensagem(payload)); }
+    else if(data){ db.mensagens.push(normalizarMensagem(data)); }
+    input.value='';
+    renderChatCRM(); renderConversas();
+    toast('Mensagem enviada','success');
+  } finally {
+    btn.disabled=false; input.disabled=false; input.focus();
+  }
+}
+
+/* ======================= FILA ======================= */
+
+/* ======================= REALTIME ======================= */
+function iniciarRealtimeMensagens(){
+  sb.channel('mensagens-realtime')
+    .on('postgres_changes',{event:'*',schema:'public',table:'mensagens'},payload=>{
+      const novo = payload.new ? normalizarMensagem(payload.new) : null;
+      if(payload.eventType==='INSERT' && novo){
+        const i=db.mensagens.findIndex(x=>x.id===novo.id);
+        if(i<0) db.mensagens.unshift(novo); else db.mensagens[i]=novo;
+        renderConversas(); renderDashboard(); if(window.waChatTelefone) renderChatCRM();
+      }
+      if(payload.eventType==='UPDATE' && novo){ const i=db.mensagens.findIndex(x=>x.id===novo.id); if(i>=0) db.mensagens[i]=novo; renderConversas(); if(window.waChatTelefone) renderChatCRM(); }
+      if(payload.eventType==='DELETE'){ db.mensagens=db.mensagens.filter(x=>x.id!==payload.old?.id); renderConversas(); if(window.waChatTelefone) renderChatCRM(); }
+    }).subscribe();
+  if(mensagensPollingTimer) clearInterval(mensagensPollingTimer);
+  mensagensPollingTimer=setInterval(async()=>{
+    const {data,error}=await sb.from('mensagens').select('*').limit(200);
+    if(!error){
+      db.mensagens=(data||[]).map(normalizarMensagem).sort((a,b)=>b.criadoEm-a.criadoEm);
+      renderConversas();
+    }
+  },5000);
+}
+
+/* ======================= IA ======================= */
+function renderChatIA(){
+  const cont = document.getElementById('iaChatMensagens');
+  if(iaHistorico.length === 0){
+    cont.innerHTML = `<div class="text-center text-sm text-bf-tertiary mt-8"><i class="fas fa-sparkles text-3xl mb-3 block text-orange-400/40"></i>Olá! Sou o copiloto comercial do Boostflow.<br>Use os cards acima ou digite uma pergunta.</div>`;
+  } else {
+    cont.innerHTML = iaHistorico.map(m => `<div class="flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}"><div class="${m.role === 'user' ? 'bg-orange-600 text-white' : 'bg-bf-elevated text-bf-text border border-bf-border'} rounded-2xl px-4 py-2.5 max-w-[80%] text-sm whitespace-pre-wrap">${esc(m.content)}</div></div>`).join('');
+  }
+  cont.scrollTop = cont.scrollHeight;
+  renderAcaoPendenteIA();
+}
+function renderAcaoPendenteIA(){
+  const box=document.getElementById('iaAcaoPendente'); if(!box) return; const acao=window.iaAcaoPendente;
+  if(!acao){box.classList.add('hidden');box.innerHTML='';return;}
+  box.classList.remove('hidden');
+  box.innerHTML=`<div class="flex flex-col sm:flex-row sm:items-center gap-3"><div class="flex-1 min-w-0"><div class="text-[11px] uppercase tracking-wide text-orange-400 font-semibold mb-1">Ação aguardando confirmação</div><div class="text-sm font-medium">${esc(acao.label||'Executar ação no CRM')}</div><div class="text-[11px] text-bf-tertiary mt-1">A IA não executará nada até você confirmar.</div></div><div class="flex gap-2 shrink-0"><button onclick="confirmarAcaoIA()" class="btn-primary text-xs py-2 px-3"><i class="fas fa-check"></i> Confirmar</button><button onclick="cancelarAcaoIA()" class="btn-ghost text-xs py-2 px-3">Cancelar</button></div></div>`;
+}
+function sugerirIA(texto){document.getElementById('iaInput').value=texto;enviarMensagemIA();}
+function cancelarAcaoIA(){window.iaAcaoPendente=null;iaHistorico.push({role:'assistant',content:'Ação cancelada. Não alterei nenhum dado.'});renderChatIA();}
+async function confirmarAcaoIA(){
+  const acao=window.iaAcaoPendente;if(!acao)return;
+  document.querySelectorAll('#iaAcaoPendente button').forEach(b=>b.disabled=true);
+  iaHistorico.push({role:'user',content:'Confirmei a ação.'});renderChatIA();
+  try{
+    const {data:{session}}=await sb.auth.getSession();if(!session)throw new Error('Sessão expirada, faça login novamente.');
+    const resp=await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},body:JSON.stringify({conversation_id:iaConversationId,confirm_action:acao})});
+    const data=await resp.json();if(!resp.ok||data.error)throw new Error(data.error||'Não foi possível executar a ação.');
+    window.iaAcaoPendente=null;iaHistorico.push({role:'assistant',content:data.reply||'Ação executada com sucesso.'});
+    await carregarTudo();renderDashboard();renderClientes();renderFollowups();
+  }catch(err){iaHistorico.push({role:'assistant',content:'⚠️ '+err.message});}
+  renderChatIA();
+}
+async function enviarMensagemIA(){
+  const input=document.getElementById('iaInput'),texto=input.value.trim();if(!texto)return;
+  const btn=document.getElementById('iaBtnEnviar');input.value='';input.disabled=true;btn.disabled=true;iaHistorico.push({role:'user',content:texto});renderChatIA();iaHistorico.push({role:'assistant',content:'...'});renderChatIA();
+  try{
+    const {data:{session}}=await sb.auth.getSession();if(!session)throw new Error('Sessão expirada, faça login novamente.');
+    const resp=await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},body:JSON.stringify({message:texto,conversation_id:iaConversationId})});
+    const data=await resp.json();iaHistorico.pop();
+    if(!resp.ok||data.error)iaHistorico.push({role:'assistant',content:'⚠️ '+(data.error||'Erro ao responder.')});
+    else{iaConversationId=data.conversation_id;if(data.pending_action)window.iaAcaoPendente=data.pending_action;iaHistorico.push({role:'assistant',content:data.reply});}
+  }catch(err){iaHistorico.pop();iaHistorico.push({role:'assistant',content:'⚠️ '+err.message});}
+  renderChatIA();input.disabled=false;btn.disabled=false;input.focus();
+}
+
+/* ======================= RELATÓRIOS ======================= */
+function renderRelatorios(){
+  const total = db.leads.length;
+  const fechados = db.leads.filter(l=>l.status==='Fechado').length;
+  const perdidos = db.leads.filter(l=>l.status==='Perdido').length;
+  const conversao = total ? Math.round((fechados/total)*100) : 0;
+  const pendentes = db.followups.filter(f=>!f.enviado).length;
+
+  document.getElementById('relStats').innerHTML = `
+    <div class="bf-card p-4"><div class="text-[11px] text-bf-tertiary mb-1">Total leads</div><div class="text-2xl font-bold">${total}</div></div>
+    <div class="bf-card p-4"><div class="text-[11px] text-bf-tertiary mb-1">Fechados</div><div class="text-2xl font-bold text-green-400">${fechados}</div></div>
+    <div class="bf-card p-4"><div class="text-[11px] text-bf-tertiary mb-1">Conversão</div><div class="text-2xl font-bold text-orange-400">${conversao}%</div></div>
+    <div class="bf-card p-4"><div class="text-[11px] text-bf-tertiary mb-1">Follow-ups pend.</div><div class="text-2xl font-bold">${pendentes}</div></div>
+  `;
+
+  const statusCounts = STATUS_ORDER.map(s=>({s, c: db.leads.filter(l=>l.status===s).length}));
+  const maxS = Math.max(1, ...statusCounts.map(x=>x.c));
+  document.getElementById('relStatusBars').innerHTML = statusCounts.map(x=>`
+    <div>
+      <div class="flex justify-between text-xs mb-1"><span class="text-bf-secondary">${statusLabel(x.s)}</span><span class="text-bf-tertiary">${x.c}</span></div>
+      <div class="h-2 rounded-full bg-bf-bg overflow-hidden"><div class="h-full rounded-full bg-gradient-to-r from-orange-500 to-orange-600" style="width:${Math.round(x.c/maxS*100)}%"></div></div>
+    </div>
+  `).join('') || '<p class="text-sm text-bf-tertiary">Sem dados</p>';
+
+  const origens = {};
+  db.leads.forEach(l=>{ const o=l.origem||'Não informado'; origens[o]=(origens[o]||0)+1; });
+  const origArr = Object.entries(origens).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxO = Math.max(1, ...origArr.map(x=>x[1]));
+  document.getElementById('relOrigens').innerHTML = origArr.map(([o,c])=>`
+    <div>
+      <div class="flex justify-between text-xs mb-1"><span class="text-bf-secondary truncate">${esc(o)}</span><span class="text-bf-tertiary">${c}</span></div>
+      <div class="h-2 rounded-full bg-bf-bg overflow-hidden"><div class="h-full rounded-full bg-gradient-to-r from-orange-400 to-orange-500" style="width:${Math.round(c/maxO*100)}%"></div></div>
+    </div>
+  `).join('') || '<p class="text-sm text-bf-tertiary">Sem dados de origem</p>';
+}
+
+/* ======================= EQUIPE ======================= */
+function renderEquipe(){
+  const el = document.getElementById('listaEquipe');
+  el.innerHTML = `<div class="bf-card p-5 flex items-center gap-4">
+    <div class="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white font-bold">Você</div>
+    <div class="flex-1 min-w-0">
+      <div class="font-semibold">Você (admin)</div>
+      <div class="text-sm text-bf-tertiary">Proprietário da conta</div>
+    </div>
+    <div class="text-right text-sm">
+      <div class="font-semibold">${db.leads.length} leads</div>
+      <div class="text-bf-tertiary text-xs">${db.leads.filter(l=>l.status==='Fechado').length} fechados</div>
+    </div>
+  </div>
+  <div class="empty-state mt-4">
+    <i class="fas fa-user-plus"></i>
+    <div class="font-medium text-bf-secondary">Convide sua equipe</div>
+    <p class="text-sm mb-3">Multi-usuário em breve — estrutura preparada.</p>
+  </div>`;
+}
+
+/* ======================= CONFIG ======================= */
+function abrirConfig(){
+  document.getElementById('cfgWhats').value = db.config.whats;
+  document.getElementById('cfgEvoUrl').value = db.config.evoUrl || '';
+  document.getElementById('cfgEvoInstance').value = db.config.evoInstance || '';
+  document.getElementById('cfgEvoKey').value = '';
+  document.getElementById('cfgEvoKey').placeholder = db.config.evoKey ? '•••••••• (já salvo, deixe em branco pra manter)' : 'cole o token aqui';
+  document.getElementById('cfgAutoSend').checked = !!db.config.autoSend;
+  document.getElementById('evoTestResult').innerHTML = '';
+  document.getElementById('configModal').showModal();
+  fecharSidebarMobile();
+}
+async function salvarConfig(e){
+  e.preventDefault();
+  db.config.whats = document.getElementById('cfgWhats').value.trim().replace(/\D/g,'');
+  db.config.evoUrl = document.getElementById('cfgEvoUrl').value.trim().replace(/\/$/,'');
+  db.config.evoInstance = document.getElementById('cfgEvoInstance').value.trim();
+  const novoToken = document.getElementById('cfgEvoKey').value.trim();
+  if(novoToken) db.config.evoKey = novoToken;
+  db.config.autoSend = document.getElementById('cfgAutoSend').checked;
+  const { data: { user } } = await sb.auth.getUser();
+  await sb.from('config').upsert({
+    user_id: user.id, whats: db.config.whats,
+    evo_url: db.config.evoUrl, evo_instance: db.config.evoInstance,
+    evo_key: db.config.evoKey, auto_send: db.config.autoSend
+  });
+  fecharModal('configModal');
+  atualizarLinksFixos();
+  configurarAutoSendLoop();
+  toast('Configurações salvas','success');
+}
+
+/* ======================= EVOLUTION ======================= */
+function evoConfigurada(){ return !!(db.config.evoUrl && db.config.evoInstance && db.config.evoKey); }
+async function enviarViaEvolution(telefoneCru, mensagem){
+  if(!evoConfigurada()) return {ok:false, motivo:'nao-configurado'};
+  const numero = normalizarTelefoneBR(telefoneCru);
+  try{
+    const resp = await fetch(`${db.config.evoUrl}/message/sendText/${encodeURIComponent(db.config.evoInstance)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': db.config.evoKey },
+      body: JSON.stringify({ number: numero, text: mensagem })
+    });
+    if(!resp.ok){
+      const texto = await resp.text().catch(()=> '');
+      return {ok:false, motivo:'http-'+resp.status, detalhe: texto};
+    }
+    return {ok:true};
+  } catch(err){
+    return {ok:false, motivo:'rede', detalhe: String(err)};
+  }
+}
+async function testarConexaoEvo(){
+  const url = document.getElementById('cfgEvoUrl').value.trim().replace(/\/$/,'');
+  const instance = document.getElementById('cfgEvoInstance').value.trim();
+  const key = document.getElementById('cfgEvoKey').value.trim() || db.config.evoKey;
+  const resultEl = document.getElementById('evoTestResult');
+  if(!url || !instance || !key){
+    resultEl.innerHTML = `<span class="text-yellow-400">Preenche URL, instância e token antes de testar.</span>`;
+    return;
+  }
+  resultEl.innerHTML = `<span class="text-bf-tertiary"><i class="fas fa-spinner fa-spin"></i> Testando...</span>`;
+  try{
+    const resp = await fetch(`${url}/instance/connectionState/${encodeURIComponent(instance)}`, { headers: { 'apikey': key } });
+    if(!resp.ok){ resultEl.innerHTML = `<span class="text-red-400">Não conectou (HTTP ${resp.status}).</span>`; return; }
+    const data = await resp.json();
+    const estado = data?.instance?.state || data?.state || 'desconhecido';
+    if(estado === 'open'){
+      resultEl.innerHTML = `<span class="text-green-400"><i class="fas fa-check-circle"></i> Conectado! Instância "${esc(instance)}" online.</span>`;
+    } else {
+      resultEl.innerHTML = `<span class="text-yellow-400">API respondeu, status: "${esc(estado)}" — reconecte o QR se necessário.</span>`;
+    }
+  } catch(err){
+    resultEl.innerHTML = `<span class="text-red-400">Erro de conexão (possível CORS na Evolution API).</span>`;
+  }
+}
+function configurarAutoSendLoop(){
+  if(autoSendTimer){ clearInterval(autoSendTimer); autoSendTimer = null; }
+  if(db.config.autoSend && evoConfigurada()){
+    autoSendTimer = setInterval(processarAutoSend, 60000);
+    processarAutoSend();
+  }
+}
+async function processarAutoSend(){
+  const agora = Date.now();
+  const vencidos = db.followups.filter(f=>!f.enviado && f.dueEm <= agora);
+  for(const f of vencidos){
+    const lead = db.leads.find(l=>l.id===f.leadId);
+    if(!lead) continue;
+    const msg = f.mensagem.replace('{nome}', lead.nome);
+    const resultado = await enviarViaEvolution(lead.telefone, msg);
+    if(resultado.ok){
+      f.enviado = true; f.enviadoAutomaticamente = true;
+      await sb.from('followups').update({ enviado: true, enviado_automaticamente: true }).eq('id', f.id);
+    }
+  }
+  if(!document.getElementById('secao-followups').classList.contains('hidden')) renderFollowups();
+  if(!document.getElementById('secao-dashboard').classList.contains('hidden')) renderDashboard();
+}
+
+/* ======================= HELPERS ======================= */
+function fecharModal(id){ document.getElementById(id).close(); }
+function renderTudo(){
+  atualizarLinksFixos();
+  renderDashboard(); renderClientes(); renderConversas();
+  renderFollowups(); renderSequencias(); renderAutomacoes();
+}
+
+/* ======================= INIT ======================= */
+atualizarLinksFixos();
+processarRetornoPagamento();
+finalizarCheckoutPendente();
+sb.auth.onAuthStateChange((event, session) => {
+  if(event === 'SIGNED_OUT'){
+    document.getElementById('admin-panel').classList.add('hidden');
+  }
+});
+</script>
+</body>
+</html>
