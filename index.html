@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR" class="dark">
 <head>
@@ -2215,56 +2214,45 @@ function iniciarRealtimeMensagens(){
 function renderChatIA(){
   const cont = document.getElementById('iaChatMensagens');
   if(iaHistorico.length === 0){
-    cont.innerHTML = `<div class="text-center text-sm text-bf-tertiary mt-8">
-      <i class="fas fa-sparkles text-3xl mb-3 block text-orange-400/40"></i>
-      Olá! Sou o copiloto comercial do Boostflow.<br>
-      Use os cards acima ou digite uma pergunta.
-    </div>`;
-    return;
+    cont.innerHTML = `<div class="text-center text-sm text-bf-tertiary mt-8"><i class="fas fa-sparkles text-3xl mb-3 block text-orange-400/40"></i>Olá! Sou o copiloto comercial do Boostflow.<br>Use os cards acima ou digite uma pergunta.</div>`;
+  } else {
+    cont.innerHTML = iaHistorico.map(m => `<div class="flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}"><div class="${m.role === 'user' ? 'bg-orange-600 text-white' : 'bg-bf-elevated text-bf-text border border-bf-border'} rounded-2xl px-4 py-2.5 max-w-[80%] text-sm whitespace-pre-wrap">${esc(m.content)}</div></div>`).join('');
   }
-  cont.innerHTML = iaHistorico.map(m => `
-    <div class="flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}">
-      <div class="${m.role === 'user' ? 'bg-orange-600 text-white' : 'bg-bf-elevated text-bf-text border border-bf-border'} rounded-2xl px-4 py-2.5 max-w-[80%] text-sm whitespace-pre-wrap">${esc(m.content)}</div>
-    </div>
-  `).join('');
   cont.scrollTop = cont.scrollHeight;
+  renderAcaoPendenteIA();
 }
-function sugerirIA(texto){
-  document.getElementById('iaInput').value = texto;
-  enviarMensagemIA();
+function renderAcaoPendenteIA(){
+  const box=document.getElementById('iaAcaoPendente'); if(!box) return; const acao=window.iaAcaoPendente;
+  if(!acao){box.classList.add('hidden');box.innerHTML='';return;}
+  box.classList.remove('hidden');
+  box.innerHTML=`<div class="flex flex-col sm:flex-row sm:items-center gap-3"><div class="flex-1 min-w-0"><div class="text-[11px] uppercase tracking-wide text-orange-400 font-semibold mb-1">Ação aguardando confirmação</div><div class="text-sm font-medium">${esc(acao.label||'Executar ação no CRM')}</div><div class="text-[11px] text-bf-tertiary mt-1">A IA não executará nada até você confirmar.</div></div><div class="flex gap-2 shrink-0"><button onclick="confirmarAcaoIA()" class="btn-primary text-xs py-2 px-3"><i class="fas fa-check"></i> Confirmar</button><button onclick="cancelarAcaoIA()" class="btn-ghost text-xs py-2 px-3">Cancelar</button></div></div>`;
+}
+function sugerirIA(texto){document.getElementById('iaInput').value=texto;enviarMensagemIA();}
+function cancelarAcaoIA(){window.iaAcaoPendente=null;iaHistorico.push({role:'assistant',content:'Ação cancelada. Não alterei nenhum dado.'});renderChatIA();}
+async function confirmarAcaoIA(){
+  const acao=window.iaAcaoPendente;if(!acao)return;
+  document.querySelectorAll('#iaAcaoPendente button').forEach(b=>b.disabled=true);
+  iaHistorico.push({role:'user',content:'Confirmei a ação.'});renderChatIA();
+  try{
+    const {data:{session}}=await sb.auth.getSession();if(!session)throw new Error('Sessão expirada, faça login novamente.');
+    const resp=await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},body:JSON.stringify({conversation_id:iaConversationId,confirm_action:acao})});
+    const data=await resp.json();if(!resp.ok||data.error)throw new Error(data.error||'Não foi possível executar a ação.');
+    window.iaAcaoPendente=null;iaHistorico.push({role:'assistant',content:data.reply||'Ação executada com sucesso.'});
+    await carregarTudo();renderDashboard();renderClientes();renderFollowups();
+  }catch(err){iaHistorico.push({role:'assistant',content:'⚠️ '+err.message});}
+  renderChatIA();
 }
 async function enviarMensagemIA(){
-  const input = document.getElementById('iaInput');
-  const texto = input.value.trim();
-  if(!texto) return;
-  const btn = document.getElementById('iaBtnEnviar');
-  input.value = ''; input.disabled = true; btn.disabled = true;
-  iaHistorico.push({ role: 'user', content: texto });
-  renderChatIA();
-  iaHistorico.push({ role: 'assistant', content: '...' });
-  renderChatIA();
+  const input=document.getElementById('iaInput'),texto=input.value.trim();if(!texto)return;
+  const btn=document.getElementById('iaBtnEnviar');input.value='';input.disabled=true;btn.disabled=true;iaHistorico.push({role:'user',content:texto});renderChatIA();iaHistorico.push({role:'assistant',content:'...'});renderChatIA();
   try{
-    const { data: { session } } = await sb.auth.getSession();
-    if(!session) throw new Error('Sessão expirada, faça login novamente.');
-    const resp = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ message: texto, conversation_id: iaConversationId })
-    });
-    const data = await resp.json();
-    iaHistorico.pop();
-    if(!resp.ok || data.error){
-      iaHistorico.push({ role: 'assistant', content: '⚠️ ' + (data.error || 'Erro ao responder.') });
-    } else {
-      iaConversationId = data.conversation_id;
-      iaHistorico.push({ role: 'assistant', content: data.reply });
-    }
-  } catch(err){
-    iaHistorico.pop();
-    iaHistorico.push({ role: 'assistant', content: '⚠️ ' + err.message });
-  }
-  renderChatIA();
-  input.disabled = false; btn.disabled = false; input.focus();
+    const {data:{session}}=await sb.auth.getSession();if(!session)throw new Error('Sessão expirada, faça login novamente.');
+    const resp=await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},body:JSON.stringify({message:texto,conversation_id:iaConversationId})});
+    const data=await resp.json();iaHistorico.pop();
+    if(!resp.ok||data.error)iaHistorico.push({role:'assistant',content:'⚠️ '+(data.error||'Erro ao responder.')});
+    else{iaConversationId=data.conversation_id;if(data.pending_action)window.iaAcaoPendente=data.pending_action;iaHistorico.push({role:'assistant',content:data.reply});}
+  }catch(err){iaHistorico.pop();iaHistorico.push({role:'assistant',content:'⚠️ '+err.message});}
+  renderChatIA();input.disabled=false;btn.disabled=false;input.focus();
 }
 
 /* ======================= RELATÓRIOS ======================= */
